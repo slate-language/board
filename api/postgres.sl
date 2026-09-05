@@ -16,7 +16,7 @@
 // waiting.
 
 import { pg } from pg
-import { hash, check } from slate:password
+import { argon2, argon2Verify } from slate:crypto
 import { env } from slate:process
 
 // What to connect with, read from the environment. **A deployment already carries this**, and a
@@ -80,11 +80,11 @@ store(db: object) -> object
 
     // -- people ------------------------------------------------------------------------------------
 
-    // **The hash runs on libuv's thread pool and the loop carries on**, which is what makes
-    // `slate:password` a promise: a tenth of a second on the loop is a tenth of a second in which
+    // **The derivation runs on a thread pool and the loop carries on**, which is what makes
+    // `argon2` a promise: a tenth of a second on the loop is a tenth of a second in which
     // this server answers nobody, so ten simultaneous sign-ups would be a second of a dead process.
     async signUp(name: string, password: string, role: string)
-        val stored = await hash(password)
+        val stored = await argon2(password)
         val r = await db.query("insert into users (name, password, role) values ($1, $2, $3)
             returning id, name, role, avatar, extract(epoch from made)::bigint as made",
             name, stored, role)
@@ -105,12 +105,12 @@ store(db: object) -> object
         val rows = r.value.rows
 
         if len(rows) == 0
-            await hash(password)
+            await argon2(password)
 
             return { ok: true, value: null }
 
         val row = rows[0]
-        val right = await check(row.password, password)
+        val right = await argon2Verify(row.password, password)
 
         if !right then return { ok: true, value: null }
 

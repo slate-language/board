@@ -7,13 +7,13 @@
 //
 // **A HOST MAY NOT HAVE EVERYTHING THIS FILE NEEDS, AND EACH TEST ASKS BY TRYING** -- a slate program
 // having no name for which host it is running on. There are two such questions: whether a socket can
-// be bound at all, and whether `slate:password` can hash. A name that is not on a back end imports
+// be bound at all, and whether `argon2` can hash. A name that is not on a back end imports
 // fine and says *"not in the JavaScript back end yet"* when a program reaches it, so the probe is the
 // call itself. `skip(reason)` is what a test that cannot run says; before that name existed it could
 // only `return`, which is a pass nobody is ever told about.
 
 import { close as closeSocket } from slate:net
-import { hash } from slate:password
+import { argon2 } from slate:crypto
 
 import { orderNamed, postgres } from "../api/postgres.sl"
 import { server, portOf } from "./pgserver.sl"
@@ -52,10 +52,9 @@ var hashing = null
 
 // Whether this host can hash a password, asked once and the same way.
 //
-// **`slate:password` is not on the JavaScript back end**, where `hash` says *"not in the JavaScript
-// back end yet"* when a program reaches it -- so the three tests that need a real Argon2id record ask
-// by trying, exactly as the socket probe does. The other statements this file checks need no hash and
-// run on both hosts.
+// **`argon2` is Argon2id and a host may simply not have it**, saying so when a program reaches it --
+// so the three tests that need a real Argon2id record ask by trying, exactly as the socket probe
+// does. The other statements this file checks need no hash and run on both hosts.
 async passwords() -> boolean
     if hashing == null then hashing = await triedHash()
 
@@ -63,7 +62,7 @@ async passwords() -> boolean
 
 async triedHash() -> boolean
     try
-        await hash("a probe and not a password")
+        await argon2("a probe and not a password")
     catch e
         return false
 
@@ -189,7 +188,7 @@ A_SORT_KEY_A_CLIENT_INVENTED_IS_THE_FIRST_ONE()
 @test
 async A_PASSWORD_IS_HASHED_ON_THE_WAY_IN_AND_NEVER_COMES_BACK_OUT()
     if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("slate:password is not on this back end, so there is no hash to check")
+    if !(await passwords()) then skip("`argon2` is not on this back end, so there is no hash to check")
 
     val guard = late("sign-up test")
     val seen = []
@@ -214,7 +213,7 @@ async A_PASSWORD_IS_HASHED_ON_THE_WAY_IN_AND_NEVER_COMES_BACK_OUT()
 @test
 async A_NAME_SOMEBODY_ELSE_HAS_COMES_BACK_AS_23505_AND_NOT_AS_A_FAULT()
     if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("slate:password is not on this back end, and signing up hashes")
+    if !(await passwords()) then skip("`argon2` is not on this back end, and signing up hashes")
 
     val guard = late("duplicate test")
     val seen = []
@@ -234,11 +233,11 @@ async A_NAME_SOMEBODY_ELSE_HAS_COMES_BACK_AS_23505_AND_NOT_AS_A_FAULT()
 @test
 async A_PASSWORD_IS_CHECKED_AGAINST_THE_RECORD_AND_A_WRONG_ONE_IS_A_NULL()
     if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("slate:password is not on this back end, so there is nothing to check against")
+    if !(await passwords()) then skip("`argon2` is not on this back end, so there is nothing to check against")
 
     val guard = late("sign-in test")
     val seen = []
-    val stored = await hash("correct horse")
+    val stored = await argon2("correct horse")
     val open = await opened({ "select id, name, role, avatar, password":
         { fields: [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "role", oid: 25 },
                    { name: "avatar", oid: 25 }, { name: "password", oid: 25 },
