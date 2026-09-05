@@ -13,7 +13,7 @@
 // only `return`, which is a pass nobody is ever told about.
 
 import { close as closeSocket } from slate:net
-import { argon2 } from slate:crypto
+import { argon2, argon2NeedsRehash, argon2Verify } from slate:crypto
 
 import { orderNamed, postgres } from "../api/postgres.sl"
 import { server, portOf } from "./pgserver.sl"
@@ -258,6 +258,97 @@ async A_PASSWORD_IS_CHECKED_AGAINST_THE_RECORD_AND_A_WRONG_ONE_IS_A_NULL()
     // handler deals with rather than a defect in the program.
     assert(wrong.ok)
     assertEq(wrong.value, null)
+
+    clearTimeout(guard)
+    shut(open)
+
+// The columns a sign-in reads, which is the one query that comes back with a password on it.
+val SignInColumns = [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "role", oid: 25 },
+                     { name: "avatar", oid: 25 }, { name: "password", oid: 25 },
+                     { name: "made", oid: 20 }]
+
+@test
+async SIGNING_IN_REPLACES_A_RECORD_HASHED_UNDER_WEAKER_PARAMETERS()
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !(await passwords()) then skip("`argon2` is not on this back end, so there is nothing to re-hash")
+
+    val guard = late("re-hash test")
+    val seen = []
+
+    // **A record from a board whose numbers were smaller**, which is what the parameters travelling
+    // inside a record make possible: it still verifies, and it is still below what is written today.
+    val old = await argon2("correct horse", { memoryCost: 8192, timeCost: 1 })
+
+    assert(contains(old, "m=8192,t=1"))
+    assert(await argon2Verify(old, "correct horse"))
+    assert(argon2NeedsRehash(old))
+
+    val open = await opened({ "select id, name, role, avatar, password":
+                                  { fields: SignInColumns,
+                                    rows: [["1", "ada", "admin", null, old, "1756900000"]],
+                                    tag: "SELECT 1" },
+                              "update users set password": { tag: "UPDATE 1" } }, seen)
+    val who = await open.made.value.signIn("ada", "correct horse")
+
+    // **The sign-in is a sign-in and the upgrade is beside it**, so what the caller gets back is what
+    // it would have got anyway.
+    assert(who.ok)
+    assertEq(who.value.name, "ada")
+    assertEq(has(who.value, "password"), false)
+
+    // **The one moment the plaintext is in hand is the moment after a successful verify**, so the
+    // second statement of a sign-in is the update that stores the stronger record.
+    assertEq(len(seen), 2)
+    assert(contains(seen[1].sql, "update users set password"))
+    assert(startsWith(seen[1].params[0], "$argon2id$v=19$m=19456,t=2"))
+    assertEq(string(seen[1].params[1]), "1")
+    assertEq(argon2NeedsRehash(seen[1].params[0]), false)
+    assert(await argon2Verify(seen[1].params[0], "correct horse"))
+
+    clearTimeout(guard)
+    shut(open)
+
+@test
+async A_RECORD_ALREADY_AT_TODAY_S_NUMBERS_IS_LEFT_ALONE()
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !(await passwords()) then skip("`argon2` is not on this back end, so there is no record to leave alone")
+
+    val guard = late("no re-hash test")
+    val seen = []
+    val current = await argon2("correct horse")
+    val open = await opened({ "select id, name, role, avatar, password":
+                                  { fields: SignInColumns,
+                                    rows: [["1", "ada", "admin", null, current, "1756900000"]],
+                                    tag: "SELECT 1" } }, seen)
+    val who = await open.made.value.signIn("ada", "correct horse")
+
+    assert(who.ok)
+
+    // **One statement and no write**, which is what every sign-in after the first upgrade costs.
+    assertEq(len(seen), 1)
+
+    clearTimeout(guard)
+    shut(open)
+
+@test
+async A_PASSWORD_COLUMN_THAT_IS_NOT_AN_ARGON2_RECORD_IS_A_FAULT()
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !(await passwords()) then skip("`argon2` is not on this back end, so a bad record faults for the wrong reason")
+
+    val guard = late("bad record test")
+    val seen = []
+    val open = await opened({ "select id, name, role, avatar, password":
+                                  { fields: SignInColumns,
+                                    rows: [["1", "ada", "admin", null, "a plaintext password",
+                                            "1756900000"]],
+                                    tag: "SELECT 1" } }, seen)
+    val store = open.made.value
+
+    // **A row that will not parse is a defect in whatever wrote the column and not somebody guessing**,
+    // which is why `argon2Verify` faults over it rather than answering `false`: a corrupted row read as
+    // a wrong password is the one confusion a sign-in must not have, and this store passes that
+    // distinction straight up.
+    await assertFaults(() -> store.signIn("ada", "correct horse"), "not an Argon2 record")
 
     clearTimeout(guard)
     shut(open)

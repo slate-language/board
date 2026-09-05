@@ -8,10 +8,11 @@
 // It answers the same results `api/postgres.sl` answers, **including the `23505` a unique index refuses
 // a duplicate name with**, which is the one SQLSTATE the application above reads.
 //
-// **A password is compared and not hashed here.** `slate:password` is Argon2id on a thread pool and is
-// not in the JavaScript back end at all, so a suite that ran it would be slow under the interpreter and
-// dead under `--js`; what these tests are about is the routes, and the hashing is `tests/postgres.sl`'s
-// half of the bargain.
+// **A password is compared and not hashed here.** `slate:crypto`'s `argon2` is deliberately slow --
+// 19 MiB and two passes, a tenth of a second a call -- so a suite that hashed on every sign-in would
+// pay for that on both hosts and prove nothing about a route. What these tests are about is the
+// routes; the hashing, the re-hash on sign-in and the record a bad row faults over are
+// `tests/postgres.sl`'s half of the bargain.
 
 // `board(seed)` -- a store holding whatever `seed` put in it.
 //

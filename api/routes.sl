@@ -78,7 +78,8 @@ sortOf(said) -> string
 //
 // `options` takes `secret`, the key a session cookie is signed with; `sink`, where `logger` sends its
 // record; `feed`, the event hub; `postLimit`, how many writes a minute one client may make;
-// `photoLimit`, how many bytes a photo may be; and `deadline`, how long a request may take.
+// `photoLimit`, how many bytes a photo may be; `deadline`, how long a request may take; and
+// `trustProxy`, whether something in front of this server says who the client is.
 export application(store: object, sessions: object, options: object = {}) -> object
     val secret = options.secret ?? "a board that made its own secret up"
     val sink = options.sink ?? print
@@ -90,6 +91,14 @@ export application(store: object, sessions: object, options: object = {}) -> obj
     // move.** Five seconds is a page nobody is waiting for any more; five milliseconds is what a
     // suite can prove the refusal with, and neither is a number to sleep through.
     val deadline = options.deadline ?? 5000
+
+    // **Whether there is something in front of this server, and nothing else.** `x-forwarded-for` is
+    // text anybody may write, so a board exposed directly must not read it: a limiter that did would
+    // hand a fresh allowance to every request that made one up, which is a limit that stops only the
+    // clients who were not trying. `server.sl` turns this on from `BOARD_BEHIND_PROXY`, and the
+    // deployment that sets it owes a proxy that REPLACES the header rather than appending to one a
+    // client sent -- see the `Caddyfile`, whose `header_up X-Forwarded-For {remote_host}` is that.
+    val trusted = options.trustProxy ?? false
     val app = api()
 
     app.failures(Failure, answer)
@@ -101,11 +110,16 @@ export application(store: object, sessions: object, options: object = {}) -> obj
     val known = session(secret, { store: sessions, maxAge: 86400 })
 
     // Reading. **300 a minute** is a person clicking about, and as of `sluice` 0.4.0 the key is the
-    // address that connected -- `req.address` -- rather than a header. **`trustProxy` is deliberately
-    // not set here**: a board with nothing in front of it must not take `x-forwarded-for` at its
-    // word, that header being a value anybody can write and therefore a limit anybody can walk round.
-    // Behind a real proxy this becomes `rateLimit({ ..., trustProxy: true })` and nothing else.
-    val browsing = stack(concat(common, [rateLimit({ limit: 300, window: 60000 }), known, formCsrf({})]))
+    // address that connected -- `req.address` -- rather than a header. **A board with nothing in front
+    // of it keys on that address and on nothing else**, and one behind a proxy keys on the leftmost
+    // `x-forwarded-for` entry, because there every client in the world shares the proxy's address.
+    // Which of the two it is is the deployment's answer and not this file's, so it is an option.
+    //
+    // **A window of its own per call**, which is why this is a function: the pages and the JSON API
+    // count separately, and one guard shared between them would be 300 for both together.
+    reading() = rateLimit({ limit: 300, window: 60000, trustProxy: trusted })
+
+    val browsing = stack(concat(common, [reading(), known, formCsrf({})]))
 
     // Writing. The body is parsed, the token is checked, and only then does a handler run.
     //
@@ -113,14 +127,16 @@ export application(store: object, sessions: object, options: object = {}) -> obj
     // may claim `text/plain` and a shell script may claim `image/png`, so the four magic numbers
     // decide and the header decides nothing. A file it refuses is a `415` naming the field and the
     // filename, from `sluice` and before this application's handler runs at all.
-    posted(shape: shape) = stack(concat(common, [rateLimit({ limit: writes, window: 60000 }),
+    posted(shape: shape) = stack(concat(common, [rateLimit({ limit: writes,
+                                                             window: 60000,
+                                                             trustProxy: trusted }),
                                                  known,
                                                  given(shape, { maxBytes: photos, accept: picture }),
                                                  formCsrf({})]))
 
     // The JSON API, which is `sluice`'s own `body` and `csrf` -- a client library can set a header and
     // a form cannot, which is the whole difference between this stack and the two above it.
-    val calling = stack(concat(common, [rateLimit({ limit: 300, window: 60000 }), known, csrf({})]))
+    val calling = stack(concat(common, [reading(), known, csrf({})]))
 
     // A stream is not a request that finishes, so it is not given a deadline and not counted against
     // a window a browser reconnects through.

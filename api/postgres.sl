@@ -16,7 +16,7 @@
 // waiting.
 
 import { pg } from pg
-import { argon2, argon2Verify } from slate:crypto
+import { argon2, argon2NeedsRehash, argon2Verify } from slate:crypto
 import { env } from slate:process
 
 // What to connect with, read from the environment. **A deployment already carries this**, and a
@@ -114,7 +114,27 @@ store(db: object) -> object
 
         if !right then return { ok: true, value: null }
 
+        await upgraded(row, password)
+
         { ok: true, value: withoutPassword(row) }
+
+    // **The one moment a stored hash can be strengthened is this one**, and it is why this exists at
+    // all: the parameters travel inside the record, so a record hashed under the numbers of two years
+    // ago goes on verifying for ever and nothing else in the program ever holds the plaintext again.
+    // `argon2NeedsRehash` reads those numbers and compares them with what `argon2` writes today --
+    // microseconds and no derivation, which is why it is not a promise.
+    //
+    // **A re-hash that cannot be stored does not refuse the sign-in.** The password was right and the
+    // record it was checked against is still a good one: a replica that may not be written to, or a
+    // database that went away between the select and the update, is a reason to keep the old hash and
+    // not a reason to lock somebody out of an account they have just proved they own.
+    async upgraded(row: object, password: string)
+        if !argon2NeedsRehash(row.password) then return false
+
+        val fresh = await argon2(password)
+        val put = await db.query("update users set password = $1 where id = $2", fresh, row.id)
+
+        put.ok
 
     async user(id: integer)
         val r = await db.query("select " + UserColumns + " from users u where u.id = $1", id)

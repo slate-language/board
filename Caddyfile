@@ -1,0 +1,32 @@
+# The board behind a proxy, which is how it is meant to be run: Caddy terminates TLS and the board
+# speaks plain HTTP on the loopback and never sees a certificate.
+#
+#     PORT=8099 PG_URL=... BOARD_SECRET=... BOARD_BEHIND_PROXY=1 slate server.sl
+#     caddy run
+#
+# `tls internal` is Caddy's own certificate authority, which it installs in the system trust store --
+# so `https://localhost` is a real TLS connection with a certificate this machine made. `curl -k`
+# skips the trust question, which is what the README's transcripts do.
+localhost {
+	tls internal
+
+	reverse_proxy 127.0.0.1:8099 {
+		# **THIS LINE IS WHAT MAKES `BOARD_BEHIND_PROXY=1` SAFE.** Caddy APPENDS to `X-Forwarded-For`
+		# by default, so a client that sends one of its own is the leftmost entry -- and the leftmost
+		# entry is what the rate limit keys on. `header_up` with `{remote_host}` REPLACES the header
+		# with the address Caddy accepted the connection from, which is the one thing about a client
+		# the client did not choose. Without it, a limit is a header away from being walked round.
+		header_up X-Forwarded-For {remote_host}
+	}
+}
+
+# What the same thing is in production. Caddy gets and renews a real certificate for the name, so
+# there is no `tls` line at all, and the board still speaks plain HTTP on the loopback.
+#
+# board.example.com {
+# 	encode zstd gzip
+#
+# 	reverse_proxy 127.0.0.1:8080 {
+# 		header_up X-Forwarded-For {remote_host}
+# 	}
+# }

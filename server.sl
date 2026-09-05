@@ -43,7 +43,7 @@ async main()
     // and revoke -- see `api/sessions.sl`, which also says what the same three functions look like over
     // a table. A fleet wants that one; one machine wants this.
     val sessions = sessionStore({})
-    val app = application(store, sessions, { secret: secret(), sink: said })
+    val app = application(store, sessions, { secret: secret(), sink: said, trustProxy: behindProxy() })
 
     val port = portOf(env("PORT") ?? "0")
     val server = serve(port, app)
@@ -58,6 +58,15 @@ async main()
 
     for r in app.routes()
         print(r.method, r.path, r.guards)
+
+// Whether something in front of this server says who the client is.
+//
+// **It is off unless it is asked for, and asking for it is a promise about the deployment**: with it
+// on, the rate limit believes `x-forwarded-for`, which is text anybody may write -- so a board that
+// sets it with nothing in front of it has a limit every client can walk round by inventing a header.
+// The `Caddyfile` beside this file is the other half of the promise: `header_up X-Forwarded-For
+// {remote_host}` REPLACES whatever a client sent rather than appending to it.
+behindProxy() -> boolean = (env("BOARD_BEHIND_PROXY") ?? "") == "1"
 
 // **`integer` CONVERTS a number and `number` READS one out of text**, and an environment
 // variable is text -- `integer("8080")` faults.

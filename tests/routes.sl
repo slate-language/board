@@ -274,9 +274,16 @@ async SIGNING_OUT_ENDS_THE_SESSION()
 
     assertEq(doc(await it.at.asJson("/")).user.name, "ada")
 
+    assertEq(len(await it.sessions.live()), 1)
+
     await it.at.form("/signout", { back: "/" })
 
     assertEq(doc(await it.at.asJson("/")).user, null)
+
+    // **Signing out revokes rather than merely forgetting.** The cookie is cleared *and* the entry is
+    // deleted from the store, which is the half a signed cookie holding the whole session cannot do:
+    // there, a cookie somebody kept a copy of goes on working until it expires.
+    assertEq(len(await it.sessions.live()), 0)
 
 // -- the token --------------------------------------------------------------------------------------
 
@@ -801,6 +808,39 @@ async TOO_MANY_WRITES_A_MINUTE_ARE_429_WITH_A_RETRY_AFTER()
     assertEq(status(over), 429)
     assert(header(over, "retry-after") != null, "and says how long to wait")
     assertEq(string(header(over, "x-ratelimit-limit")), "2")
+
+// A write, with headers of the caller's own -- which is how a test forges the header a proxy writes.
+async posting(it: object, headers: object)
+    await it.at.sent("POST", "/signin",
+        { headers: headers with { "content-type": "application/json" },
+          query: { format: "json" },
+          body: toJSON({ name: "ada", password: "wrong", _csrf: it.at.token() }) })
+
+@test
+async A_FORWARDED_HEADER_BUYS_NOTHING_WHERE_NOTHING_IS_IN_FRONT_OF_THE_BOARD()
+    val it = made({ postLimit: 2 })
+
+    await it.at.get("/signin")
+    await posting(it, {})
+    await posting(it, {})
+
+    // **The header is a value anybody can write**, so a limiter that read it by default would stop
+    // only the clients who were not trying. The board is not behind a proxy here, so what counts is
+    // the socket this arrived on and the header is not looked at.
+    assertEq(status(await posting(it, { "x-forwarded-for": "203.0.113.9" })), 429)
+
+@test
+async BEHIND_A_PROXY_THE_LIMIT_COUNTS_THE_FORWARDED_CLIENT_AND_NOT_THE_PROXY()
+    val it = made({ postLimit: 2, trustProxy: true })
+
+    await it.at.get("/signin")
+    await posting(it, { "x-forwarded-for": "203.0.113.9" })
+    await posting(it, { "x-forwarded-for": "203.0.113.9" })
+
+    // Every request here arrives from the same address, which behind a proxy is the proxy's: keyed on
+    // that, the fourth request would be refused whoever made it, and the board would be one client.
+    assertEq(status(await posting(it, { "x-forwarded-for": "203.0.113.9" })), 429)
+    assertEq(status(await posting(it, { "x-forwarded-for": "198.51.100.7" })), 401)
 
 // -- the JSON API ----------------------------------------------------------------------------------------
 
