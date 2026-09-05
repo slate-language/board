@@ -229,10 +229,11 @@ THE_THEME_CONTROL_IS_TWO_REAL_ANCHORS_AND_theme_light_IS_THE_ABSENCE_OF_THE_PARA
 
 @test
 CHANGING_THE_THEME_KEEPS_THE_FILTER_AND_THE_SORT_THE_READER_IS_ON()
-    // **This is a regression and not a nicety.** `mortar` 0.2.0's own `Theme` changes the theme with
+    // **This is a regression and not a nicety.** `mortar` 0.2.0's own `Theme` changed the theme with
     // `write({ theme })`, and `lath`'s `useSearch` setter takes the WHOLE query -- so its toggle on
-    // `/?tag=slate&sort=busiest` writes `/?theme=dark` and the filter and the sort are gone. The
-    // board's `ThemeChoice` hands the setter `query with { theme }`, so the rest of the query stands.
+    // `/?tag=slate&sort=busiest` wrote `/?theme=dark` and the filter and the sort were gone. **0.2.1
+    // keeps the query**, and this board's control is `mortar`'s setter and an `href` of its own; what
+    // is asserted here is the anchor, which is the half a reader with no script running follows.
     val markup = shown("/?tag=slate&sort=busiest", listing([]) with { tag: "slate", sort: "busiest" })
 
     assert(contains(markup, "href=\"/?tag=slate&amp;sort=busiest&amp;theme=dark\">Dark</a>"))

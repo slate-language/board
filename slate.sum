@@ -2,6 +2,7 @@ github.com/slate-language/lath v0.4.0 sha256:bc51370bbd6901b1f457285681df0c4b7a3
 github.com/slate-language/lath v0.5.1 sha256:f2b0f90d9ecd51aa8ffcfe554d11a9b6510a954e467d87d5e60c517ee71ea020
 github.com/slate-language/logger v0.1.0 sha256:ffa84e1b6103cb12c195b53760fdd85dea101367888fd1a6c7ae959f9d5d776c
 github.com/slate-language/mortar v0.2.0 sha256:5cdf7c6b15be453607aa4a7e987f2f50a9f58aee580f032671ab09d2a8c4b552
+github.com/slate-language/mortar v0.2.1 sha256:326f32e250634c39cbdb6b4763f9389080a056b6b25d4f1fcb3b49887b7725c4
 github.com/slate-language/pg v0.3.0 sha256:5048bc1470bd21ffce5ab5de4dfcdc34c72e468fd09e4b4f07913d6254fe2796
 github.com/slate-language/sluice v0.4.0 sha256:9d114e208e5ad6622af996973482265919003eb872561e7db9b12206e64169eb
 github.com/slate-language/sluice v0.4.1 sha256:7796440a28ac0402114c3ff2dda95802e5c4abba7ef9b8d87802e3b6023389d1

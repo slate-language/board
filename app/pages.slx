@@ -372,29 +372,27 @@ val ThemeWords = [{ value: "light", label: "Light" }, { value: "dark", label: "D
 // request and render a dark page the first time, and a reader whose script never ran can still
 // change it -- none of which is true of a choice kept in `useState` or in `localStorage`.
 //
-// **The writing half is this board's control and not `mortar`'s own setter**, and that is a defect in
-// `mortar` 0.2.0 rather than a preference: its `Theme` changes the theme with `write({ theme })`, and
-// `lath`'s `useSearch` setter takes the WHOLE query -- so its toggle on `/?tag=slate&sort=busiest`
-// writes `/?theme=dark` and the filter and the sort are gone. This hands the setter the query it
-// already has with one member changed, which is what the setter is shaped for and what every control
-// on the list page does too.
+// **THE WRITING HALF IS `mortar`'s OWN SETTER**, which is `useTheme()`'s second half: its `set` keeps
+// the rest of the query and writes `theme=light` as the ABSENCE of the parameter, so a toggle on
+// `/?tag=slate&sort=busiest` leaves the filter and the sort exactly where they were.
+//
+// **What this control still owns is the ADDRESS EACH ANCHOR GOES TO**, and that is not a duplicate of
+// the setter: a component library has nowhere to learn what a link means, so `where` builds the href
+// with `lath/router`'s `withSearch` over the query the page is already on -- the same expression the
+// sort, the tag and the page number all write, which is what stops the two drifting apart.
 ThemeChoice(props: object) =
     val nav = useContext(Nav)
     val search = useSearch()
     val query = search[0]
-    val set = search[1]
     val chosen = useTheme()
 
     // **`theme=light` is the ABSENCE of the parameter**, so the default never rides in a URL anybody
     // copied -- and `lath` leaves a member whose value is `null` out of the query it writes, which is
     // what makes saying so one word.
-    said(v: string) = if v == "light" then null else v
-
-    where(v: string) -> string = withSearch(nav.url, query with { theme: said(v) })
-    chose(v: string) = set(query with { theme: said(v) })
+    where(v: string) -> string = withSearch(nav.url, query with { theme: if v == "light" then null else v })
 
     val out = <Segmented class="theme" options={ThemeWords} value={chosen[0]} href={where}
-                         onChoose={chose} label="Theme"/>
+                         onChoose={chosen[1]} label="Theme"/>
 
     out
 

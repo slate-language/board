@@ -665,7 +665,14 @@ async THE_THEME_IS_IN_THE_ADDRESS_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDER
 async ANYTHING_THAT_IS_NOT_dark_IS_LIGHT_BECAUSE_A_QUERY_IS_SOMETHING_ANYBODY_MAY_TYPE()
     val it = made()
 
-    assert(shows(await it.at.get("/?theme=chartreuse"), "data-theme=\"light\""))
+    // **Nothing here normalises the address any more**: `mortar` 0.2.1's `Theme` reads a word it does
+    // not know as the default and says nothing, so the board serves a light page for a spelling a
+    // stranger chose rather than a 500 -- and the word stays in the address it was typed into.
+    val said = await it.at.get("/?theme=chartreuse")
+
+    assert(shows(said, "data-theme=\"light\""))
+    assert(shows(said, "\"url\":\"/?theme=chartreuse\""),
+        "and the page hydrates against the address a person is really on")
 
 // -- where a form says to go back to ------------------------------------------------------------------
 

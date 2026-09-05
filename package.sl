@@ -18,8 +18,11 @@
         // empty text child stands for no node in either host, and an attribute whose value is
         // `false` or `null` is written by neither.
         lath: { git: "github.com/slate-language/lath", version: "0.5.1" },
-        // The stylesheets, as slate values rather than as a blob of quoted CSS.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.2.0" },
+        // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.2.1 is what took
+        // two workarounds out of this board**: its `Theme`'s setter keeps the rest of the query, so
+        // a theme toggle no longer throws away a filter and a sort, and a `?theme` it does not know
+        // is the default rather than a fault, so the server has nothing to normalise.
+        mortar: { git: "github.com/slate-language/mortar", version: "0.2.1" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.3.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
