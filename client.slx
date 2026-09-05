@@ -7,6 +7,10 @@
 // page makes no DOM mutations at all on the way in, and what it gains is the one thing markup cannot
 // carry: event listeners.
 //
+// **One page is the exception and is BUILT here rather than adopted** -- the composer, whose markup
+// would be a set of blank controls. `app/shell.sl`'s `rendersOnServer` is the one place that decides
+// which is which, and both sides ask it; `README.md` says why that page and not another.
+//
 // **This file is the only one that knows there is a browser.** Everything under `app/` is handed a
 // path, a record and two functions, and renders the same on a server; what is here is where those come
 // from -- the address bar, `fetch`, and the state the server left in the page.
@@ -16,13 +20,14 @@
 // JavaScript back end yet"* the moment the page loaded. That is why `lath` splits `lath/router` from
 // `lath/dom`, and why `api/` is not imported from here.
 
-import { createElement, Fragment, hydrate, useEffect, useRef, useState } from lath
+import { createElement, Fragment, hydrate, mount, useEffect, useRef, useState } from lath
 import { domHost } from lath/dom
 import { navigateWith, parseSearch, searchOf } from lath/router
 import { attribute, byId, nodeText, onNavigate, pushPath, query, replacePath,
     setAttribute } from slate:dom
 
 import { App } from "./app/pages.slx"
+import { rendersOnServer } from "./app/shell.sl"
 
 // The query parameter that asks a page for its values rather than for itself.
 val AsJson = "format=json"
@@ -220,4 +225,20 @@ started() -> object
 
     parsed.value
 
-hydrate(<Root state={started()}/>, domHost("#app"))
+// **Which of the two this page is, is the SERVER'S answer read back rather than a guess.**
+// `rendersOnServer` in `app/shell.sl` decided whether markup went into the container, and this asks
+// the same function about the same record -- so a page that was rendered is adopted and a page that
+// was not is built, and neither can be mistaken for the other by looking at what happens to be in
+// the container.
+//
+// **Hydrating an empty container is a fault and mounting over markup is silent**, which is why the
+// wrong way round matters: the second would throw away a page the reader is already looking at and
+// build it again, and nothing would say so.
+start() =
+    val state = started()
+    val into = domHost("#app")
+    val page = <Root state={state}/>
+
+    if rendersOnServer(state.data) then hydrate(page, into) else mount(page, into)
+
+start()

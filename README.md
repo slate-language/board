@@ -8,10 +8,41 @@ whole stack — [sluice](https://github.com/slate-language/sluice) answering HTT
 [pg](https://github.com/slate-language/pg) speaking to PostgreSQL, and
 [logger](https://github.com/slate-language/logger) taking the line each request leaves behind.
 
-**Every page works with no JavaScript at all.** Each form is a real `<form method="post">`, each link
-is a real `<a href>`, and the server renders the markup. What the browser program adds is the thing
-markup cannot carry: it adopts the page it was sent, installs the listeners, and from then on a link
-costs the rows and nothing else — no markup, no stylesheet, no second copy of the header.
+**Every page that has anything to say works with no JavaScript at all.** Each form is a real
+`<form method="post">`, each link is a real `<a href>`, and the server renders the markup. What the
+browser program adds is the thing markup cannot carry: it adopts the page it was sent, installs the
+listeners, and from then on a link costs the rows and nothing else — no markup, no stylesheet, no
+second copy of the header. One page is deliberately the other way round, and the next section is why.
+
+## When a page is rendered on the server and when it is not
+
+**Server-rendered is the default here and the composer is the one exception**, which is a decision
+made per page rather than per application. `app/shell.sl`'s `rendersOnServer(data)` is the whole of
+it: `api/render.sl` asks it whether to put markup in the document, and `client.slx` asks the same
+function about the same record whether to adopt what is there or to build. Neither side decides
+alone — hydrating a container the server left empty is a fault, and mounting over markup that is
+already right would throw away the page a reader is looking at and say nothing.
+
+**A page is rendered on the server when its markup is worth sending.** That is content the reader
+came for — the thread list, a thread and its replies, somebody's profile — which arrives before the
+script and arrives at all for a crawler; and it is the answer to a `POST`, because a form refused with
+*a thread wants a title and something to say* has to show that sentence to a browser with no script
+running. Everything on this board but one page is one of those two.
+
+**A page is client-only when its markup would be a set of blank controls.** `/new` is the composer:
+every value in it lives in a `useRef` until somebody types, so there is nothing in the first render
+that the browser is not about to build anyway, and sending it costs a copy of the form on the wire
+and a hydration walk over markup that carries no information. So the server answers the document, the
+stylesheet-free `<head>`, `<div id="app"></div>` and the state — who is signed in, the CSRF token,
+and the reason the last post was refused — and `mount` builds the page into it. The reason a
+*refusal* still reaches the reader is that it travels in the state rather than in the markup: the
+page mounts and `Problem` renders it.
+
+**What it costs is the one thing worth stating plainly: starting a thread now needs a script.** Every
+other form on the board — signing in, joining, replying, deleting, the avatar, signing out — is still
+a plain post that works with none, and so is every link, every filter, every sort and the theme. That
+is the trade this page is here to show: SSR buys a page that works before and without JavaScript, and
+it is worth paying for wherever there is something to read.
 
 ## Running it
 
@@ -66,7 +97,8 @@ repository and of nothing else; a program that uses these packages never sees np
 
 - **One page, rendered twice.** `app/` holds components that reach for no host at all: the server
   renders them to markup through `lath`'s string host, and the browser adopts that markup and carries
-  on. `client.slx` is the only file that knows there is a browser.
+  on. `client.slx` is the only file that knows there is a browser — and one page, the composer, is
+  rendered once instead, in the browser, which is what the section above is about.
 - **The same route answers a page or the values it was made from.** `?format=json` on any `GET` gives
   the record the markup was rendered from, which is what a hydrated page asks for on every
   navigation, and what makes `curl` a first-class client of a board.

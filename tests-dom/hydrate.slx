@@ -36,6 +36,7 @@ import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
 import { domHost } from lath/dom
 
 import { App } from "../app/pages.slx"
+import { rendersOnServer } from "../app/shell.sl"
 import { at, click, mutations, prevented, shown } from "./probe.slx"
 
 val Ada = { id: 1, name: "ada", role: "admin", avatar: null, made: 1756900000 }
@@ -189,3 +190,55 @@ MARKUP_THAT_DOES_NOT_MATCH_IS_A_FAULT_NAMING_THE_PATH_AND_BOTH_SIDES()
     assert(contains(said, "the page does not match what was rendered"))
     assert(contains(said, "wants <a>"))
     assert(contains(said, "has <b>"))
+
+// -- the one page the server does not render ------------------------------------------------------
+
+// The composer, which is the page `rendersOnServer` answers `false` about.
+val Composing = { page: "compose" }
+
+Blank(props: object) =
+    val out = <App nav={{ url: "/new", go: null, replace: null }} data={Composing} user={Ada}
+                   csrf="a-token" send={sending}/>
+
+    out
+
+@test
+async A_CLIENT_ONLY_PAGE_IS_BUILT_INTO_AN_EMPTY_CONTAINER()
+    // **The empty container is what the server actually sends for this page**, `api/render.sl` asking
+    // `rendersOnServer` and putting nothing in the document -- so this is the page a browser really
+    // gets, and `mount` is what has to make something of it.
+    assert(!rendersOnServer(Composing), "the composer is the client-only one")
+    assert(rendersOnServer(Data), "and a thread is not")
+
+    at("")
+
+    await sleep(1)
+
+    // **The container and nothing in it**, which is the whole of what `api/render.sl` writes for this
+    // page -- `shown()` being the container itself and not its children.
+    assertEq(shown(), "<div id=\"app\"></div>")
+
+    mount(<Blank/>, domHost("#app"))
+
+    await sleep(1)
+
+    assert(contains(shown(), "Start a thread</h1>"), "the form is on the page now")
+    assert(contains(shown(), "the slate stack, end to end."), "and so is the rest of the document")
+
+    // **The sheets are the visible difference between the two arrangements.** A server-rendered page
+    // carries its `<style>` inside the container, in front of the markup, so the first paint is
+    // already styled; a mounted one has none to adopt and `lath`'s DOM host writes them into the
+    // document's `<head>` instead -- which is why nothing here is in front of the form.
+    assert(contains(markup(), "<style"), "the page the server renders carries its sheets")
+    assert(!contains(shown(), "<style"), "and the one the browser builds has none in the container")
+
+@test
+async HYDRATING_AN_EMPTY_CONTAINER_IS_A_FAULT_WHICH_IS_WHY_ONE_FUNCTION_DECIDES()
+    // **The two sides cannot be allowed to disagree**, and this is what disagreeing costs: a page the
+    // server did not render, adopted anyway, faults on the first node it looks for. `rendersOnServer`
+    // is asked by `api/render.sl` and by `client.slx` so that neither can decide it alone.
+    at("")
+
+    val said = fell(() -> hydrate(<Blank/>, domHost("#app")))
+
+    assert(said != "", "hydration refused the empty page rather than quietly building it")

@@ -232,7 +232,7 @@ CHANGING_THE_THEME_KEEPS_THE_FILTER_AND_THE_SORT_THE_READER_IS_ON()
     // **This is a regression and not a nicety.** `mortar` 0.2.0's own `Theme` changes the theme with
     // `write({ theme })`, and `lath`'s `useSearch` setter takes the WHOLE query -- so its toggle on
     // `/?tag=slate&sort=busiest` writes `/?theme=dark` and the filter and the sort are gone. The
-    // board writes its own control over `app/search.sl`'s `set`, which MERGES.
+    // board's `ThemeChoice` hands the setter `query with { theme }`, so the rest of the query stands.
     val markup = shown("/?tag=slate&sort=busiest", listing([]) with { tag: "slate", sort: "busiest" })
 
     assert(contains(markup, "href=\"/?tag=slate&amp;sort=busiest&amp;theme=dark\">Dark</a>"))

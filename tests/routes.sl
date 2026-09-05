@@ -144,6 +144,56 @@ async A_THREAD_THAT_IS_NOT_THERE_IS_A_404_AND_STILL_A_PAGE()
     assertEq(status(nowhere), 404)
     assert(shows(nowhere, "Nothing at /no/such/place"), "a 404 is something a person can read")
 
+// -- the one page the server does not render ---------------------------------------------------------
+
+@test
+async THE_COMPOSER_IS_AN_EMPTY_CONTAINER_AND_EVERYTHING_IT_NEEDS_TO_BUILD_ITSELF()
+    // **A form with nothing in it yet is markup worth nothing**, so the composer is sent as the
+    // document, the state and the script and the browser builds it. Everything else on the board
+    // carries rows or a validation error and is rendered here.
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val reply = await it.at.get("/new")
+
+    assertEq(status(reply), 200)
+    assert(shows(reply, "<div id=\"app\"></div>"), "the container is empty")
+    assert(!shows(reply, "Start a thread</h1>"), "and the form is not in it")
+
+    // The three things the page it mounts needs, all of them already in the response: who is signed
+    // in, the token its post has to carry, and the title in the tab.
+    assert(shows(reply, "<title>Start a thread -- the board</title>"))
+    assert(shows(reply, "\"page\":\"compose\""), "the state says which page to build")
+    assert(shows(reply, "\"name\":\"grace\""), "and who is signed in")
+    assert(shows(reply, "\"csrf\":\"" + it.at.token() + "\""), "and what the token is")
+
+@test
+async A_REFUSED_POST_TO_A_CLIENT_ONLY_PAGE_STILL_CARRIES_WHY()
+    // **The reason travels in the state rather than in the markup**, which is what keeps a `400`
+    // readable on a page the server did not render: the browser mounts the composer and `Problem`
+    // renders what is in the record.
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val refused = await it.at.form("/threads", { title: "", body: "", tags: "" })
+
+    assertEq(status(refused), 400)
+    assert(shows(refused, "<div id=\"app\"></div>"), "still the empty container")
+    assert(shows(refused, "a thread wants a title and something to say"), "and still says why")
+
+@test
+async EVERY_OTHER_PAGE_IS_MARKUP_BEFORE_IT_IS_A_SCRIPT()
+    // **The control.** Without it the assertion above could be about a shell that is empty for every
+    // page, which is a board with no server rendering at all rather than one deliberate exception.
+    val it = made()
+
+    for where in ["/", "/threads/1", "/signin", "/signup", "/people/ada", "/no/such/place"]
+        val reply = await it.at.get(where)
+
+        assert(!shows(reply, "<div id=\"app\"></div>"), where + " is rendered on the server")
+
 // -- joining, and signing in -----------------------------------------------------------------------
 
 @test

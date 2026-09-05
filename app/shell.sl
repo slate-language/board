@@ -64,6 +64,22 @@ export escaped(s: string) -> string =
 
     replace(d, "'", "&#39;")
 
+// Whether the server renders this page's markup, or sends an empty container for the browser to
+// build into.
+//
+// **ONE FUNCTION, READ BY BOTH SIDES, WHICH IS WHAT KEEPS THEM AGREEING.** `api/render.sl` asks it
+// whether to put markup in the document at all, and `client.slx` asks it whether to adopt what is
+// there or to build; a server that rendered and a page that mounted anyway would silently throw the
+// markup away, and a server that sent nothing to a page that hydrated would fault on the first node.
+//
+// **The composer is the one page that answers `false`, and what makes it the one is that its markup
+// is worth nothing.** It is an empty form: every value in it lives in a `useRef` until somebody
+// types, so the markup a server would send is a set of blank controls the browser is about to be
+// handed anyway. Every other page here carries rows read out of the database, or a validation error
+// the server worked out -- content a reader wants before a script has run, and in the list's case
+// content a crawler wants at all.
+export rendersOnServer(data: object) -> boolean = (data.page ?? "missing") != "compose"
+
 // What the tab says, per page. **The page's own name first**, which is what a person scanning twenty
 // tabs is reading.
 export titleOf(data: object) -> string

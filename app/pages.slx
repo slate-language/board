@@ -11,14 +11,13 @@
 // spacing scale, the focus ring and both themes are the library's, and no rule here writes one.
 
 import { createElement, Fragment, Boundary, memo, style, useContext } from lath
-import { Anything, Link, router } from lath/router
+import { Anything, Link, router, useSearch, withSearch } from lath/router
 import { Avatar, CardList, EmptyState, Live, Page, Pagination, Post, PostList, Problem,
          Segmented, SortControls, TagList, Theme, Timestamp, useTheme } from mortar
 
 import { Board, Nav, PostContext, Session } from "./context.sl"
 import { Card, pictureOf, tagged } from "./parts.slx"
 import { AvatarForm, Doing, ReplyForm, SearchForm, SignForm, ThreadForm } from "./forms.slx"
-import { useSearch, withSearch } from "./search.sl"
 
 import shell from "./shell.css"
 import listing from "./list.css"
@@ -53,6 +52,7 @@ export List(props: object) =
 
     val nav = useContext(Nav)
     val search = useSearch()
+    val query = search[0]
     val set = search[1]
     val list = board.threads
     val rows = list.rows
@@ -65,14 +65,25 @@ export List(props: object) =
     // hydrated. So the board sorts and filters with no script running, a cmd-click opens the
     // filtered list in a tab, and nothing about either is a special case.
     //
-    // **Choosing the tag already in force clears it**, which is what `tag: null` says.
-    sorted(v: string) -> string = withSearch(nav.url, { sort: v, page: null })
-    tagHref(t: string) -> string = withSearch(nav.url, { tag: if t == on then null else t, page: null })
-    paged(n: integer) -> string = withSearch(nav.url, { page: n })
+    // **Choosing the tag already in force clears it**, which is what `tag: null` says: `lath` leaves
+    // a member whose value is `null` out of the query it writes, so that is how a name comes off an
+    // address.
+    //
+    // **`query with { … }` and not `{ … }`, because `useSearch`'s setter takes the WHOLE query** --
+    // and so does `withSearch`, the two being one function read in each direction. What that buys is
+    // that a control says which members it changes and nothing about the ones it does not: choosing a
+    // sort keeps the tag, the search text and the colour the reader is in, and the same expression is
+    // the anchor's `href` and the handler's argument.
+    changed(over: object) -> object = query with over
 
-    choseSort(v: string) = set({ sort: v, page: null })
-    choseTag(t: string) = set({ tag: if t == on then null else t, page: null })
-    chosePage(n: integer) = set({ page: n })
+    sorted(v: string) -> string = withSearch(nav.url, changed({ sort: v, page: null }))
+    tagHref(t: string) -> string = withSearch(nav.url, changed({ tag: if t == on then null else t,
+                                                                 page: null }))
+    paged(n: integer) -> string = withSearch(nav.url, changed({ page: n }))
+
+    choseSort(v: string) = set(changed({ sort: v, page: null }))
+    choseTag(t: string) = set(changed({ tag: if t == on then null else t, page: null }))
+    chosePage(n: integer) = set(changed({ page: n }))
 
     // **A block `if` is bound to a name before the tag rather than written inside a hole.** A hole
     // takes an expression, and slate's block `if` is a statement -- so this is the shape every
@@ -361,23 +372,26 @@ val ThemeWords = [{ value: "light", label: "Light" }, { value: "dark", label: "D
 // request and render a dark page the first time, and a reader whose script never ran can still
 // change it -- none of which is true of a choice kept in `useState` or in `localStorage`.
 //
-// **The writing half is this board's `useSearch` and not `mortar`'s own setter**, and that is a
-// defect in `mortar` 0.2.0 rather than a preference: its `Theme` changes the theme with
-// `write({ theme })`, and `lath`'s `useSearch` setter takes the WHOLE query -- so toggling the theme
-// on `/?tag=slate&sort=busiest` writes `/?theme=dark` and the filter and the sort are gone. The
-// board's own `set` merges, so a member named is changed and the rest of the query is kept.
+// **The writing half is this board's control and not `mortar`'s own setter**, and that is a defect in
+// `mortar` 0.2.0 rather than a preference: its `Theme` changes the theme with `write({ theme })`, and
+// `lath`'s `useSearch` setter takes the WHOLE query -- so its toggle on `/?tag=slate&sort=busiest`
+// writes `/?theme=dark` and the filter and the sort are gone. This hands the setter the query it
+// already has with one member changed, which is what the setter is shaped for and what every control
+// on the list page does too.
 ThemeChoice(props: object) =
     val nav = useContext(Nav)
     val search = useSearch()
+    val query = search[0]
     val set = search[1]
     val chosen = useTheme()
 
     // **`theme=light` is the ABSENCE of the parameter**, so the default never rides in a URL anybody
-    // copied.
+    // copied -- and `lath` leaves a member whose value is `null` out of the query it writes, which is
+    // what makes saying so one word.
     said(v: string) = if v == "light" then null else v
 
-    where(v: string) -> string = withSearch(nav.url, { theme: said(v) })
-    chose(v: string) = set({ theme: said(v) })
+    where(v: string) -> string = withSearch(nav.url, query with { theme: said(v) })
+    chose(v: string) = set(query with { theme: said(v) })
 
     val out = <Segmented class="theme" options={ThemeWords} value={chosen[0]} href={where}
                          onChoose={chose} label="Theme"/>
