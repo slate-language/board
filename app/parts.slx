@@ -158,41 +158,34 @@ export Token(props: object) =
 
 // The attributes a field only sometimes has, as an object to spread into the tag.
 //
-// **A `false` or a `null` may not be written as an attribute value here**, and that is a workaround
-// rather than a style: `lath`'s string host drops an attribute whose value is `false` or `null` -- which
-// is HTML's own rule -- and its DOM host writes `required="false"`, which a browser reads as
-// *required*. So the two hosts disagree, and a page that rendered one would fault on hydration where
-// the other adopted it. What is passed here is `true` or nothing.
-attributes(props: object, names: array) -> object
-    var out = {}
-
-    for name in names
-        val value = props[name] ?? null
-
-        if value != null && value != false && value != "" then out[name] = value
-
-    out
-
 // One labelled field, with whatever the server said was wrong with it underneath.
 //
 // **The fields are UNCONTROLLED and their values live in a `useRef`**, which is what keeps a form from
 // re-rendering on every keystroke -- and, for a `<textarea>`, is the only arrangement that works at
 // all: a textarea's text is its *default* value, so rewriting the child of one somebody is typing in
 // changes nothing they can see and is a mutation for nothing.
+//
+// **A `required` a field has not got is written as `null` and the two hosts agree that is no
+// attribute**, which is HTML's own rule and `lath`'s in both directions as of 0.5.1 -- so the
+// sometimes-attributes are ordinary props here rather than an object assembled first.
 export Field(props: object) =
     val name = props.name
     val id = "f-" + name
     val note = props.note ?? null
     val kind = props.kind ?? "text"
-    val extra = attributes(props, ["required", "placeholder", "autocomplete", "accept", "min", "max"])
     val box = if (props.lines ?? 0) > 0
         <textarea id={id} name={name} rows={props.lines} onInput={props.onInput ?? null}
-                  {...extra}>{props.value ?? ""}</textarea>
+                  required={props.required ?? null} placeholder={props.placeholder ?? null}
+                  autocomplete={props.autocomplete ?? null} min={props.min ?? null}
+                  max={props.max ?? null}>{props.value ?? ""}</textarea>
     else
         // **A file input is given no `value` at all**, a browser refusing to be told what file is in
         // one -- so the member is absent rather than empty.
         <input id={id} name={name} type={kind} onInput={props.onInput ?? null}
-               {...(if kind == "file" then {} else { value: props.value ?? "" })} {...extra}/>
+               {...(if kind == "file" then {} else { value: props.value ?? "" })}
+               required={props.required ?? null} placeholder={props.placeholder ?? null}
+               autocomplete={props.autocomplete ?? null} accept={props.accept ?? null}
+               min={props.min ?? null} max={props.max ?? null}/>
     val out = <p class="field">
         <label for={id}>{props.label ?? name}</label>
         {box}

@@ -492,13 +492,9 @@ async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_A_415_WHATEVER_IT_SAYS_IT_IS()
 
 @test
 async A_REFUSED_UPLOAD_IS_STILL_A_PROBLEM_DOCUMENT_AND_ITS_TYPE_IS_THE_PROBLEM_S()
-    skip("sluice 0.4.0's 415 puts the file's media type in the document's own `type` member")
-
     // **RFC 9457's `type` is the PROBLEM's type, a URI, and `about:blank` where there is none.**
-    // `multipart`'s refusal adds the media type the client claimed under a member of the same name,
-    // so the document that comes back says `"type": "image/png"` -- which reads as a problem type of
-    // `image/png` to anything following the specification. The extra member wants another name;
-    // everything else about the refusal is right.
+    // The media type the client claimed is a different thing and `sluice` 0.4.1 calls it a different
+    // thing: it comes back as `mediaType`, and `type` says what every problem document's `type` says.
     val it = made()
 
     await signedIn(it, "grace", "alsosecret")
@@ -507,6 +503,7 @@ async A_REFUSED_UPLOAD_IS_STILL_A_PROBLEM_DOCUMENT_AND_ITS_TYPE_IS_THE_PROBLEM_S
         program("innocent.png"))
 
     assertEq(doc(refused).type, "about:blank")
+    assertEq(doc(refused).mediaType, "image/png")
 
 @test
 async A_PHOTO_OVER_THE_LIMIT_IS_A_413()

@@ -213,9 +213,10 @@ EVERY_FORM_CARRIES_THE_TOKEN_AND_WHERE_TO_GO_BACK_TO()
 
 @test
 A_BOOLEAN_ATTRIBUTE_IS_THERE_OR_IS_NOT_THERE_AND_IS_NEVER_FALSE()
-    // **`required="false"` is a browser reading a field as required**, so a `false` may never be
-    // written as an attribute value -- and `lath`'s two hosts disagree about that, which is why the
-    // props are built rather than passed straight through.
+    // **`required="false"` is a browser reading a field as required**, so a `false` or a `null` may
+    // never be written as an attribute value. `lath` 0.5.1's two hosts agree that neither is an
+    // attribute at all, which is HTML's own rule and is what lets a field pass its props straight
+    // through -- `required={props.required ?? null}` and nothing assembled first.
     val markup = shown("/signin", { page: "signin" })
 
     assert(contains(markup, "<input id=\"f-name\" name=\"name\" type=\"text\" value=\"\""))

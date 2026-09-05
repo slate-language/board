@@ -16,18 +16,13 @@
 // among them**: it is a document with script in it, and a board that served one from its own origin
 // would be serving somebody else's JavaScript to its readers.
 //
-// **slate CANNOT WRITE BYTES TO A FILE, WHICH IS WHY `bytesTo` AND `bytesOf` EXIST.** `slate:fs`
-// answers `readBytes` and has no `writeBytes`, and `writeFile` renders anything that is not a string
-// the way `print` would -- so a byte array written straight out lands on the disk as the text
-// `[137, 80, 78, ...]`. Until that name exists the bytes are kept base64url-encoded and decoded on
-// the way out, which is a private arrangement between these two functions: no other file here knows
-// it, and the day `writeBytes` lands each of them becomes one call. Reported to the compiler
-// 2026-09-05, with `req.bytes` -- which arrived in 0.0.30 for exactly this path -- as the argument
-// that the other half is missing.
+// **THE BYTES GO TO THE DISK AS BYTES.** `slate:fs` answers `readBytes` and `writeBytes`, which is
+// the whole of the storage here: what is in the file is the picture, so anything else -- `file(1)`,
+// a browser opening it, a backup -- reads it as the picture it is.
 
-import { exists, mkdir, readFile, writeFile } from slate:fs
+import { exists, mkdir, readBytes, writeBytes } from slate:fs
 import { sha256 } from slate:crypto
-import { base64urlDecode, base64urlEncode } from slate:url
+import { base64urlEncode } from slate:url
 
 // Where everything goes, relative to where the server was started.
 export val Root = "./uploads"
@@ -110,7 +105,7 @@ export async keep(file: object) -> object
     // this is not a race to lose and the second writer has nothing to say.
     if await exists(Root + "/" + name) then return { ok: true, value: name }
 
-    val put = await bytesTo(Root + "/" + name, bytes)
+    val put = await writeBytes(Root + "/" + name, bytes)
 
     if !put.ok then return { ok: false, status: 500, detail: put.error }
 
@@ -133,7 +128,7 @@ export async stored(name: string) -> object
     if type == null || !minted(name)
         return { ok: false, error: "that is not a name this board hands out" }
 
-    val got = await bytesOf(Root + "/" + name)
+    val got = await readBytes(Root + "/" + name)
 
     if !got.ok then return got
 
@@ -161,18 +156,6 @@ base64url(c: string) -> boolean
     letter || digit || c == "-" || c == "_"
 
 // -- the disk ---------------------------------------------------------------------------------------
-
-// The two calls that will be one each the day `slate:fs` grows a `writeBytes`. See the note at the
-// top of this file: `writeFile` renders a byte array the way `print` would, so what is on the disk is
-// the bytes base64url-encoded and nothing else in this program knows that.
-async bytesTo(file: string, bytes: array) -> object = await writeFile(file, base64urlEncode(bytes))
-
-async bytesOf(file: string) -> object
-    val text = await readFile(file)
-
-    if !text.ok then return text
-
-    base64urlDecode(text.value)
 
 // The directories of a path, made one at a time.
 //

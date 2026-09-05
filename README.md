@@ -90,17 +90,11 @@ repository and of nothing else; a program that uses these packages never sees np
 
 ## What is not finished
 
-**The pages cannot be hydrated on `lath` 0.4.0 or 0.5.0**, and `tests-dom/framework.slx` is four
-lath-only programs saying why: two text children in a row come back from the markup as one text node,
-and a text child that is the empty string does not come back at all — so `<h2>{n} replies</h2>` and
-`<textarea>{value ?? ""}</textarea>`, both of them the most ordinary thing a page can say, cannot be
-walked back into the tree that wrote them. Two smaller ones are mutations rather than faults. Nothing
-here is written around them; the tests that depend on hydration are skipped and name what they are
-waiting for.
-
-**A photo's bytes are kept base64url-encoded on the disk**, because `slate:fs` answers `readBytes` and
-has no `writeBytes` — `writeFile` renders an array of bytes the way `print` would. It is two functions
-in `api/uploads.sl` and nothing else in the program knows about it.
+**Three of `tests/postgres.sl`'s tests do not run under `slate test --js`**, `slate:password` not
+being on that back end: signing somebody up hashes their password, and a host with no `hash` has
+nothing to check. Each asks by trying and skips saying so. Everything else in the file — the
+statements, the parameters, the SQLSTATE, the column types — runs on both hosts over
+`tests/pgserver.sl`.
 
 **The browser polls a thread rather than reading the stream the server is publishing.** `slate:dom`
 has no `EventSource` and `fetch` answers a whole body rather than a stream, so a slate program in a

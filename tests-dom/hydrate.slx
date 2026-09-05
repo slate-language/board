@@ -8,28 +8,29 @@
 // **The markup comes from the string host the server uses**, which is what makes the whitespace
 // question answer itself: this is the page a browser is really sent.
 //
-// ## THREE OF THESE ARE SKIPPED, AND WHAT THEY ARE WAITING FOR IS `lath` AND NOT THIS BOARD
+// ## WHAT THESE ASK OF `lath`, AND WHY THE PAGE IS WRITTEN THE ORDINARY WAY
 //
-// **This board's pages cannot be hydrated on `lath` 0.4.0, and 0.5.0 answers exactly the same.**
-// Every reduction is in `tests-dom/framework.slx` beside this file -- lath and nothing else in each
-// of them. Two of the four stop hydration dead, because the markup a server writes cannot be walked
-// back:
+// **This whole file is four properties of `lath`'s hydration, applied to a real page.** Each one has
+// its own reduction in `tests-dom/framework.slx` beside this file -- lath and a document and nothing
+// else -- so a failure here is read there. Two of them decide whether the page can be adopted at all,
+// because the markup a server writes has to be walkable back:
 //
-// - **Two text children in a row come back as one text node.** `<h2>{len(rows)} replies</h2>` is two
-//   children in the tree and `2 replies` in the markup, and the browser's parser has no way to know
-//   there was a seam. React writes a `<!-- -->` between them for exactly this reason.
-// - **A text child that is the empty string vanishes.** `<textarea>{value ?? ""}</textarea>` writes
-//   `<textarea></textarea>`, and the tree then wants a text node the page does not have.
+// - **Two text children in a row must not come back as one text node.** `<h2>{len(rows)} replies</h2>`
+//   is two children in the tree and `2 replies` in the markup unless the markup marks the seam. React
+//   writes a `<!-- -->` between them for exactly this reason.
+// - **A text child that is the empty string must be decided the same way by both hosts.**
+//   `<textarea>{value ?? ""}</textarea>` writes `<textarea></textarea>`, so a tree that made a node
+//   for it would want one the page does not have.
 //
-// The other two are mutations rather than faults, and this file's `A_HYDRATED_BOARD_MAKES_NO_MUTATIONS`
-// is what sees them: `value` is written as a property with no comparison first (one record per hidden
+// The other two are mutations rather than faults, and `A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL`
+// is what sees them: `value` written as a property with no comparison first (one record per hidden
 // field, and a field somebody is typing in would be reset), and a numeric attribute -- `rows={5}` --
-// is compared against the page's `"5"`, disagrees, and is written again.
+// compared against the page's `"5"`, disagreeing, and written again.
 //
 // **Nothing here is written around them.** `{n} replies` is the most ordinary thing a page says, and a
 // board that spelled it `{string(n) + " replies"}` to get past a framework defect would be teaching
-// the workaround to everybody who read it. The skips say what is owed; the reductions say it in
-// fourteen lines; and the day `lath` answers them, the reason comes off and these run.
+// the workaround to everybody who read it. All four were `lath` defects this board found; `lath`
+// 0.5.1 answers all four, which is why these run.
 
 import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
 import { domHost } from lath/dom
@@ -79,13 +80,8 @@ fell(f) -> string
 
     said
 
-// What all four of the framework's defects are waiting on, said once.
-val Owed = "lath 0.4.0 and 0.5.0 cannot hydrate this page: see tests-dom/framework.slx"
-
 @test
 async A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL()
-    skip(Owed)
-
     val was = markup()
 
     at(was)
@@ -93,6 +89,11 @@ async A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL()
     // The records for planting the markup are the harness's own; the measurement starts after them.
     await sleep(1)
 
+    // **What the page is compared against is the PAGE and not the markup string**, and that is not a
+    // weaker check: a browser that parsed `required` and serialised it back writes `required=""`, so
+    // the markup a server sent and the page it became are two spellings of one document. Reading the
+    // page before and after is what asks whether hydration changed it.
+    val planted = shown()
     val before = mutations()
 
     hydrate(<Page/>, domHost("#app"))
@@ -101,8 +102,13 @@ async A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL()
 
     assertEq(mutations() - before, 0)
 
-    // And what is on the page is still exactly what was sent, character for character.
-    assertEq(shown(), "<div id=\"app\">" + was + "</div>")
+    // And what is on the page is still exactly what was there, character for character.
+    assertEq(shown(), planted)
+
+    // The markup really is the whole page and not a fragment of it, which is what says the comparison
+    // above is over everything the server sent.
+    assert(contains(planted, "<h2 class=\"count\">2 replies</h2>"))
+    assert(contains(planted, "the slate stack, end to end."))
 
 @test
 async A_MOUNTED_RENDER_INTO_THE_SAME_MARKUP_RECORDS_PLENTY()
@@ -122,8 +128,6 @@ async A_MOUNTED_RENDER_INTO_THE_SAME_MARKUP_RECORDS_PLENTY()
 
 @test
 async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
-    skip(Owed)
-
     // **This is what hydration is FOR.** The markup a server sent is already the page; what it does
     // not have is a single event listener, and the tree that was walked is what installs them.
     at(markup())
@@ -148,8 +152,6 @@ async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
 
 @test
 async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
-    skip(Owed)
-
     // **The fallback is not a fallback at all**: a submit handler that finds no sender does not call
     // `prevent`, so the browser posts the form itself and the server answers with the next page.
     Plain(props: object) =

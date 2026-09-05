@@ -55,15 +55,19 @@ Root(props: object) =
     // **`pushPath` does NOT raise `onNavigate`** -- a browser raises it for a movement the user made
     // and never for one the program made itself -- so a push sets the state too, and the listener
     // below is only ever the back and forward buttons.
-    go(to: string)
-        pushPath(to)
+    //
+    // **`opts` is what a `Link` hands in**: `lath`'s `navigateWith` calls this as `f(to, opts)`, and
+    // `{ push: false }` asks for the address to be rewritten rather than pushed. Nothing said is a
+    // push, which is what following a link is.
+    go(to: string, opts = null)
+        if opts == null || opts.push != false then pushPath(to) else replacePath(to)
+
         setUrl(to)
 
     // A sort, a filter or a page number REPLACES rather than pushes: it is not somewhere a person
     // navigated to, and a back button filled with every keystroke of a search box is what this avoids.
     replace(to: string)
-        replacePath(to)
-        setUrl(to)
+        go(to, { push: false })
 
     moved(where: string)
         setUrl(where)

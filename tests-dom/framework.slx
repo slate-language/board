@@ -1,18 +1,18 @@
-// What `lath` owes this board, reduced to the smallest program that shows each one.
+// What hydration has to get right, reduced to the smallest program that shows each one.
 //
 // **Nothing here is about the board.** There is no router, no context, no page and no store: every
-// test below is `lath` and a document, and each is the whole of one defect. They are kept here rather
-// than in a scratch file because a probe worth running is worth keeping -- `tests-dom/hydrate.slx`
-// says which of its own tests each of these is holding up, and the day `lath` answers them the
-// `skip` comes off here and there together.
+// test below is `lath` and a document, and each is one property said in fourteen lines. They are kept
+// here rather than in a scratch file because a probe worth running is worth keeping --
+// `tests-dom/hydrate.slx` is the same four properties as a whole page, and these are what say which
+// one broke when it does.
 //
-// **All four are about the same thing said four ways: the markup a server writes has to be walkable
-// back into the tree that wrote it.** Two of them are not -- a seam between two text children and an
-// empty text child both disappear into the markup -- and two of them are written again on the way in
-// when they did not need to be.
+// **All four are the same thing said four ways: the markup a server writes has to be walkable back
+// into the tree that wrote it.** Two are about what the markup has to carry -- a seam between two
+// text children, and an empty text child -- and two are about writing nothing on the way back in.
 //
-// Found 2026-09-05 writing this board's hydration suite, on lath 0.4.0 and slate 0.0.30, and
-// checked again against lath 0.5.0 in a project depending on nothing but lath: all four stand.
+// Each of the four was a `lath` defect this board found, and `lath` 0.5.1 answers all four: a seam
+// is a comment the parser keeps, an empty text child stands for no node in either host, and both
+// `value` and a numeric attribute are compared before they are written.
 
 import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
 import { domHost } from lath/dom
@@ -81,24 +81,18 @@ One(props: object) =
 
 @test
 TWO_TEXT_CHILDREN_IN_A_ROW_COME_BACK_AS_ONE_TEXT_NODE()
-    skip("lath 0.4.0 and 0.5.0 write no seam between adjacent text children")
-
-    // `<h2>{2} replies</h2>` is two children in the tree and `<h2>2 replies</h2>` in the markup, and
-    // a parser has no way to know there was a seam. **React writes a `<!-- -->` between them for
-    // exactly this reason**, and reads it back as the boundary it is.
-    //
-    // Today: `at #app > 0 > 0 the tree wants the text "2" and the page has the text "2 replies"`.
+    // `<h2>{2} replies</h2>` is two children in the tree and `2 replies` in the markup unless the
+    // markup says otherwise, and a parser has no way to know there was a seam. **React writes a
+    // `<!-- -->` between them for exactly this reason**, and reads it back as the boundary it is;
+    // `lath` 0.5.1 does the same.
     assertEq(fell(Adjacent), "")
 
 @test
 A_TEXT_CHILD_THAT_IS_THE_EMPTY_STRING_SURVIVES_THE_MARKUP()
-    skip("lath 0.4.0 and 0.5.0 lose an empty text child between the two hosts")
-
-    // `<p>{""}</p>` writes `<p></p>`, so the tree wants a text node the page has not got. **Either
-    // host may decide it** -- a tree that never makes an empty text node, or markup that says the
-    // node was there -- but the two have to agree.
-    //
-    // Today: `at #app > 0 > 0 the tree wants the text "" and the page has nothing`.
+    // `<p>{""}</p>` writes `<p></p>`, so a tree that made a text node for it would want one the page
+    // has not got. **Either host may decide it** -- a tree that never makes an empty text node, or
+    // markup that says the node was there -- but the two have to agree, and `lath` 0.5.1 decides it
+    // the first way: an empty text child stands for no node anywhere.
     assertEq(fell(Empty), "")
 
 @test
@@ -126,19 +120,15 @@ Plain_(props: object) =
 
 @test
 async A_VALUE_ALREADY_ON_THE_PAGE_IS_NOT_WRITTEN_AGAIN()
-    skip("lath 0.4.0 and 0.5.0 set value as a property without comparing it first")
-
     // **`value` is set as a PROPERTY and not an attribute**, which is what keeps a re-render from
-    // freezing a field somebody is typing in -- and the property setter is not guarded by the
-    // comparison the attribute path has. On an `<input>` the property reflects the content
-    // attribute, so an observer records a change to the value it already held; on a field being
-    // typed in, hydration would take what was typed.
+    // freezing a field somebody is typing in -- and the property setter has to be guarded by the
+    // same comparison the attribute path makes. On an `<input>` the property reflects the content
+    // attribute, so writing it unguarded records a change to the value it already held; on a field
+    // being typed in, hydration would take what was typed.
     assertEq(await records(Valued), 0)
 
 @test
 async A_NUMERIC_ATTRIBUTE_IS_COMPARED_AS_THE_TEXT_IT_IS_ON_THE_PAGE()
-    skip("lath 0.4.0 and 0.5.0 compare rows={5} against the page's \"5\" and rewrite it")
-
     // An attribute is text, always. `rows={5}` is the ordinary way to write it and the comparison
     // that decides whether to write it has to say so.
     assertEq(await records(Rowed), 0)
