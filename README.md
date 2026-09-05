@@ -293,10 +293,10 @@ harness. `tests/store.sl` is a second implementation of the store over ordinary 
 `tests/pgserver.sl` is a PostgreSQL server written in slate — so the SQL is checked against the wire
 rather than against whichever server happens to be installed.
 
-**Every test in the suite now runs on both hosts**, the six that need a real Argon2id record included:
-`slate:crypto`'s `argon2` reached the JavaScript back end in slate 0.0.32, and the three skips this
-README used to list are gone. They still ask by trying rather than by naming a host, which is what a
-slate program has to do.
+**The six tests that need a real Argon2id record now run on both hosts**, where three of them used to
+skip: `slate:crypto`'s `argon2` reached the JavaScript back end in slate 0.0.32. What still skips
+under `--js` is the four that need a picture *decoded*, `slate:image` not being there — and every one
+of them asks by trying rather than by naming a host, which is what a slate program has to do.
 
 The third renders the real pages into a real document. jsdom is a **dev** dependency of this
 repository and of nothing else; a program that uses these packages never sees npm.
