@@ -1,0 +1,61 @@
+/* Somebody's page: who they are, and the two lists of what they have written.
+ *
+ * **THE HEAD OF THIS PAGE IS THE ONE PLACE A PICTURE IS LARGE**, which is what makes it read as a
+ * person's page rather than as another list: everywhere else on the board an avatar is a small round
+ * mark beside a name, and here it is the first thing.
+ */
+
+.mortar.board .profile {
+    & .who {
+        display: flex;
+        align-items: center;
+        gap: var(--m-space-5);
+        padding-bottom: var(--m-space-5);
+        margin-bottom: var(--m-space-6);
+        border-bottom: 1px solid var(--m-line);
+    }
+
+    & .who h1 { margin: 0; }
+
+    & .who .role {
+        margin: var(--m-space-1) 0 0;
+        color: var(--m-ink-faint);
+        font-size: var(--m-text-ui);
+    }
+
+    /* **The two lists are rows and not bullets.** What a reader is scanning is a title on the left
+     * and a date on the right, and a marker in front of each would be a third column saying
+     * nothing. */
+    & .own {
+        list-style: none;
+        margin: var(--m-space-4) 0 var(--m-space-6);
+        padding: 0;
+        border-top: 1px solid var(--m-line-soft);
+
+        & li {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: var(--m-space-4);
+            padding: var(--m-space-3) 0;
+            border-bottom: 1px solid var(--m-line-soft);
+        }
+
+        /* A date is the quiet half of the row and it may not wrap: a stamp broken over two lines is
+         * a column that no longer lines up with the one above it. */
+        & .m-at {
+            color: var(--m-ink-faint);
+            font-size: var(--m-text-sm);
+            white-space: nowrap;
+        }
+    }
+
+    & .avatar-form { margin-block: var(--m-space-6); }
+
+    @media (width < 34rem) {
+        & .who {
+            gap: var(--m-space-4);
+            align-items: flex-start;
+        }
+    }
+}

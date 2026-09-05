@@ -1,9 +1,16 @@
 // The document the markup goes in.
 //
 // **Everything a page needs to start is already in the response**, which is the whole of what server
-// rendering buys: the markup, the stylesheet, and the values the page was rendered from. The browser
+// rendering buys: the markup, the stylesheets, and the values the page was rendered from. The browser
 // program adopts the markup and reads the values back rather than asking for either again, so the
 // first paint owes nothing to a network round trip and a reader with no JavaScript sees the same page.
+//
+// **THERE IS NO `<link rel="stylesheet">` AND THERE IS NOTHING TO SERVE.** A stylesheet here is a
+// file the compiler read into the program, registered by the component that needs it with `style(css)`
+// and written into the markup by `lath`'s string host -- so a page carries a `<style>` for exactly the
+// components it rendered, there is no second request before the first paint, and a page that renders
+// no thread list ships no thread-list css. `client.slx` writes none of them again: they came with the
+// markup it is adopting.
 //
 // **This file writes text and imports no host**, so `tests/pages.sl` reads its answer with nothing
 // running.
@@ -12,14 +19,18 @@
 //
 // `markup` is what `lath`'s string host made of `App`, and `state` is what `client.slx` reads back out
 // of `#board-state` in order to hydrate against exactly what was rendered.
+//
+// **`data-theme` is on `<html>` and not only on the element `Theme` renders**, which is what paints
+// the canvas behind an overscroll and turns the document's own scrollbar over: `tokens.css` declares
+// its custom properties under `[data-theme]`, and `body` can read only the ones on the root. It is a
+// second copy of one value and `client.slx` keeps it in step.
 export page(title: string, theme: string, markup: string, state: object) -> string
     val head = "<!doctype html>
-<html lang=\"en\" class=\"" + theme + "\">
+<html lang=\"en\" data-theme=\"" + theme + "\">
 <head>
 <meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
 <title>" + escaped(title) + "</title>
-<link rel=\"stylesheet\" href=\"/assets/style.css\">
 </head>
 <body>
 <div id=\"app\">"

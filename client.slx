@@ -18,8 +18,9 @@
 
 import { createElement, Fragment, hydrate, useEffect, useRef, useState } from lath
 import { domHost } from lath/dom
-import { navigateWith } from lath/router
-import { byId, nodeText, onNavigate, pushPath, replacePath } from slate:dom
+import { navigateWith, parseSearch, searchOf } from lath/router
+import { attribute, byId, nodeText, onNavigate, pushPath, query, replacePath,
+    setAttribute } from slate:dom
 
 import { App } from "./app/pages.slx"
 
@@ -177,9 +178,28 @@ Root(props: object) =
 
         { ok: true }
 
+    // -- the document around the page --------------------------------------------------------------
+
+    // **`<html data-theme>` is the board's, not the framework's.** `mortar`'s `Theme` paints the
+    // element it renders and says nothing about the document, so the canvas behind an overscroll and
+    // the document's own scrollbar follow the theme only because this attribute is kept in step with
+    // the address. `app/shell.sl` writes it on the way out and this writes it on every change.
+    //
+    // **It compares before it writes**, which is the rule every host function in `lath` follows and is
+    // what keeps a page adopting the server's markup from making a mutation on the way in: the value
+    // is already the right one.
+    themed()
+        val root = query("html")
+        val now = if (parseSearch(searchOf(url)).theme ?? "") == "dark" then "dark" else "light"
+
+        if root != null && attribute(root, "data-theme") != now then setAttribute(root, "data-theme", now)
+
+        null
+
+    useEffect(themed, [url])
+
     val nav = { url: url, go: go, replace: replace }
-    val out = <App nav={nav} data={state.data} user={state.user} csrf={state.csrf}
-                   theme={state.theme} send={send}/>
+    val out = <App nav={nav} data={state.data} user={state.user} csrf={state.csrf} send={send}/>
 
     out
 

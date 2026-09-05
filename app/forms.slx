@@ -8,11 +8,19 @@
 //
 // **The values live in refs and not in state**, so typing does not re-render the page it is typed on.
 // A submit handler reads them at the moment it fires.
+//
+// **The controls are `mortar`'s.** A `Form` writes the CSRF field itself, a `Field` wires `for`/`id`
+// between a label and its control and `aria-describedby`/`aria-invalid` to whatever went wrong with
+// it, and a `Problem` renders an RFC 9457 document for a person. What is left here is which fields a
+// form has and what happens when it is submitted.
 
-import { createElement, Fragment, useContext, useRef, useState } from lath
+import { createElement, Fragment, style, useContext, useRef, useState } from lath
+import { Actions, Button, Field, FileInput, Form, Problem, TextArea } from mortar
 
-import { Nav, Post, Session } from "./context.sl"
-import { Field, Problem, Token, into } from "./parts.slx"
+import { Nav, PostContext, Session } from "./context.sl"
+import { into } from "./parts.slx"
+
+import sheet from "./forms.css"
 
 // -- what a submit handler is ---------------------------------------------------------------------
 
@@ -23,7 +31,7 @@ import { Field, Problem, Token, into } from "./parts.slx"
 // so a form carrying one is posted by the browser as `multipart/form-data` and the page reloads.
 export useForm(action: string, gather: function, hold = null) -> array =
     val session = useContext(Session)
-    val post = useContext(Post)
+    val post = useContext(PostContext)
     val [note, setNote] = useState(null)
 
     async sent(e: object)
@@ -45,44 +53,59 @@ export useForm(action: string, gather: function, hold = null) -> array =
 
     [note, sent]
 
+// The token every form of ours carries, read off the session.
+//
+// **A form is posted by a browser with no script running**, so the token cannot travel in a header --
+// which is what `sluice`'s own `csrf` guard asks for, and what `Form`'s `csrf` prop writes as a
+// hidden field. `api/forms.sl` takes either.
+useToken() -> string =
+    val session = useContext(Session)
+
+    session.csrf
+
 // -- signing in, and joining ------------------------------------------------------------------------
 
 // One form for both, because they differ in three words and in nothing else.
 export SignForm({ joining = false, detail = null, mismatch = [] }) =
+    style(sheet)
+
     val name = useRef("")
     val password = useRef("")
     val action = if joining then "/signup" else "/signin"
+    val csrf = useToken()
 
     gather() = { name: name.current, password: password.current }
 
     val form = useForm(action, gather)
     val note = form[0]
-    val out = <form class="card sign" method="post" action={action} onSubmit={form[1]}>
+    val out = <Form class="card sign" action={action} csrf={csrf} onSubmit={form[1]}>
         <h1>{if joining then "Join the board" else "Sign in"}</h1>
-        <Problem detail={note ?? detail} mismatch={mismatch}/>
-        <Token/>
+        <Problem detail={note ?? detail} errors={mismatch}/>
         <Field name="name" label="Name" required autocomplete="username" onInput={into(name)}/>
         <Field name="password" label="Password" kind="password" required
                autocomplete={if joining then "new-password" else "current-password"}
                onInput={into(password)}/>
-        <p class="do"><button type="submit">{if joining then "Join" else "Sign in"}</button></p>
+        <Actions><Button kind="submit">{if joining then "Join" else "Sign in"}</Button></Actions>
         <p class="aside">
             {if joining then "Already here? " else "New here? "}
             <a href={if joining then "/signin" else "/signup"}>
                 {if joining then "Sign in" else "Make an account"}
             </a>
         </p>
-    </form>
+    </Form>
 
     out
 
 // -- a new thread ---------------------------------------------------------------------------------
 
 export ThreadForm({ detail = null, mismatch = [] }) =
+    style(sheet)
+
     val title = useRef("")
     val body = useRef("")
     val tags = useRef("")
     val photo = useRef("")
+    val csrf = useToken()
 
     gather() = { title: title.current, body: body.current, tags: tags.current }
 
@@ -90,27 +113,30 @@ export ThreadForm({ detail = null, mismatch = [] }) =
 
     val form = useForm("/threads", gather, chose)
     val note = form[0]
-    val out = <form class="card compose" method="post" action="/threads"
+    val out = <Form class="card compose" action="/threads" csrf={csrf}
                     enctype="multipart/form-data" onSubmit={form[1]}>
         <h1>Start a thread</h1>
-        <Problem detail={note ?? detail} mismatch={mismatch}/>
-        <Token/>
+        <Problem detail={note ?? detail} errors={mismatch}/>
         <Field name="title" label="Title" required placeholder="What is this about?"
                onInput={into(title)}/>
-        <Field name="body" label="Post" lines={8} required onInput={into(body)}/>
-        <Field name="tags" label="Tags" placeholder="slate, sluice, lath" onInput={into(tags)}/>
-        <Field name="photo" label="Photo" kind="file" accept="image/*" onInput={into(photo)}/>
-        <p class="do"><button type="submit">Post it</button></p>
-    </form>
+        <TextArea name="body" label="Post" rows={8} required onInput={into(body)}/>
+        <Field name="tags" label="Tags" placeholder="slate, sluice, lath" hint="Separated by commas."
+               onInput={into(tags)}/>
+        <FileInput name="photo" label="Photo" accept="image/*" onInput={into(photo)}/>
+        <Actions><Button kind="submit">Post it</Button></Actions>
+    </Form>
 
     out
 
 // -- a reply --------------------------------------------------------------------------------------
 
 export ReplyForm({ thread = 0 }) =
+    style(sheet)
+
     val body = useRef("")
     val photo = useRef("")
     val action = "/threads/" + string(thread) + "/replies"
+    val csrf = useToken()
 
     gather() = { body: body.current }
 
@@ -118,15 +144,14 @@ export ReplyForm({ thread = 0 }) =
 
     val form = useForm(action, gather, chose)
     val note = form[0]
-    val out = <form class="card reply-form" method="post" action={action}
+    val out = <Form class="card reply-form" action={action} csrf={csrf}
                     enctype="multipart/form-data" onSubmit={form[1]}>
         <h2>Reply</h2>
         <Problem detail={note}/>
-        <Token/>
-        <Field name="body" label="Say something" lines={5} required onInput={into(body)}/>
-        <Field name="photo" label="Photo" kind="file" accept="image/*" onInput={into(photo)}/>
-        <p class="do"><button type="submit">Post reply</button></p>
-    </form>
+        <TextArea name="body" label="Say something" rows={5} required onInput={into(body)}/>
+        <FileInput name="photo" label="Photo" accept="image/*" onInput={into(photo)}/>
+        <Actions><Button kind="submit">Post reply</Button></Actions>
+    </Form>
 
     out
 
@@ -135,24 +160,27 @@ export ReplyForm({ thread = 0 }) =
 // **This form never intercepts**, carrying nothing but a file. It is the plain post every form here
 // falls back to, written out once with nothing else in it.
 export AvatarForm(props: object) =
-    val out = <form class="card avatar-form" method="post" action="/profile/avatar"
+    style(sheet)
+
+    val csrf = useToken()
+    val out = <Form class="card avatar-form" action="/profile/avatar" csrf={csrf}
                     enctype="multipart/form-data">
-        <Token/>
-        <Field name="photo" label="Your picture" kind="file" accept="image/*" required/>
-        <p class="do"><button type="submit">Use this</button></p>
-    </form>
+        <FileInput name="photo" label="Your picture" accept="image/*" required/>
+        <Actions><Button kind="submit">Use this</Button></Actions>
+    </Form>
 
     out
 
 // -- the one-button forms ---------------------------------------------------------------------------
 
-// A post with no fields: signing out, revoking a session, deleting a post, changing the theme.
+// A post with no fields: signing out, revoking a session, deleting a post.
 //
 // **A button and not a link, because it changes something.** A `GET` that changed a row would be
 // followed by every crawler and every link prefetcher there is.
 export Doing(props: object) =
     val nav = useContext(Nav)
     val action = props.action
+    val csrf = useToken()
 
     // **Where to go afterwards travels in the form and not in `Referer`.** A handler that redirected
     // to whatever a browser said the last page was would be an open redirect, and a header a client
@@ -161,22 +189,22 @@ export Doing(props: object) =
     gather() = { back: nav.url }
 
     val form = useForm(action, gather)
-    val out = <form class={"doing " + (props.class ?? "")} method="post" action={action}
+    val out = <Form class={"m-doing " + (props.class ?? "")} action={action} csrf={csrf}
                     onSubmit={form[1]}>
-        <Token/>
         <input type="hidden" name="back" value={nav.url}/>
-        <button type="submit" class={props.tone ?? "plain"}>{props.label ?? "Do it"}</button>
-    </form>
+        <Button kind="submit" variant={props.tone ?? "quiet"}>{props.label ?? "Do it"}</Button>
+    </Form>
 
     out
 
 // The search box in the header. **A `GET` form, so a search is a URL somebody can send to somebody
-// else** -- and the one form here that changes nothing and therefore carries no token.
+// else** -- and the one form here that changes nothing and therefore carries no token, which
+// `mortar`'s `Form` refuses to let it: a double-submit token in the address bar of every search
+// anybody sent to anybody else is the thing that check is about.
 export SearchForm({ q = "" }) =
-    val out = <form class="find" method="get" action="/" role="search">
-        <label class="visually-hidden" for="f-q">Search</label>
-        <input id="f-q" name="q" type="search" value={q} placeholder="Search threads"/>
-        <button type="submit">Search</button>
-    </form>
+    val out = <Form class="m-search" action="/" method="get" label="Search">
+        <Field name="q" kind="search" label="Search threads" value={q}
+               placeholder="Search threads"/>
+    </Form>
 
     out

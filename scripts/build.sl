@@ -14,10 +14,21 @@
 // server renders the markup -- so a missing `app.js` costs the page its live replies and its
 // reload-free posts and nothing else.
 
+import { mkdir } from slate:fs
 import { run } from slate:process
 import { exit } from slate:process
 
 async main()
+    // **`public/` is made here because nothing in git puts it there any more.** It held the board's
+    // stylesheet until the styling moved into the program: a sheet is a file the compiler reads and
+    // `lath`'s string host writes into the markup, so the only thing left to serve is this program.
+    val made = await mkdir("public")
+
+    if !made.ok && !contains(made.error, "EEXIST")
+        print("could not make public/:", made.error)
+
+        exit(1)
+
     print("slate js client.slx -o public/app.js")
 
     val built = await run("slate", ["js", "client.slx", "-o", "public/app.js"], {})

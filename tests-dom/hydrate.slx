@@ -63,7 +63,7 @@ async sending(action: string, fields: object) -> object
 
 Page(props: object) =
     val out = <App nav={{ url: "/threads/7", go: null, replace: null }} data={Data} user={Ada}
-                   csrf="a-token" theme="light" send={sending}/>
+                   csrf="a-token" send={sending}/>
 
     out
 
@@ -156,7 +156,7 @@ async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
     // `prevent`, so the browser posts the form itself and the server answers with the next page.
     Plain(props: object) =
         val out = <App nav={{ url: "/threads/7", go: null, replace: null }} data={Data}
-                    user={Ada} csrf="a-token" theme="light" send={null}/>
+                    user={Ada} csrf="a-token" send={null}/>
 
         out
 
@@ -182,7 +182,7 @@ MARKUP_THAT_DOES_NOT_MATCH_IS_A_FAULT_NAMING_THE_PATH_AND_BOTH_SIDES()
     // fault -- and then renders its fallback into markup that is not the fallback's, so what escapes
     // names the fallback's own first node instead of the disagreement. The header is above every
     // boundary on the page, so a mismatch there is the one this test means to describe.
-    at(markup().replace("<a class=\"brand\"", "<b class=\"brand\""))
+    at(markup().replace("<a class=\"m-brand\"", "<b class=\"m-brand\""))
 
     val said = fell(() -> hydrate(<Page/>, domHost("#app")))
 

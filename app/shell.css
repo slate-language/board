@@ -1,0 +1,132 @@
+/* The board's own frame: the document around `mortar`'s shell, and the four things in the header
+ * that are this application rather than a component library.
+ *
+ * **NOT ONE COLOUR, SIZE, RADIUS OR DURATION IS WRITTEN HERE.** Every value below is a `var(--m-…)`
+ * out of `mortar/parts/tokens.css`, which is what makes the whole board turn over on one attribute
+ * and is why there is no dark half of this file to keep in step with the light one. A rule that
+ * needed a colour of its own would be a rule that had drifted out of the system.
+ *
+ * **The document is the application's and the subtree is the library's**, which is the line `mortar`
+ * draws and this is the board's side of it: `Theme` paints the element it renders and says nothing
+ * about `html` or `body`, so the margin, the height and the canvas behind an overscroll are here.
+ */
+
+html {
+    height: 100%;
+    background: var(--m-paper);
+}
+
+body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--m-paper);
+}
+
+/* **`data-theme` is on `<html>` as well as on the element `Theme` renders**, which is what makes the
+ * two rules above turn over: `tokens.css` re-declares its custom properties under `[data-theme]`,
+ * and a `<body>` outside the component tree can only read the ones on the root. `app/shell.sl`
+ * writes it from the address the server was asked for and `client.slx` keeps it in step, comparing
+ * before it writes so that a page adopting the server's markup changes nothing. */
+
+.mortar.board {
+    /* **The header holds seven things across the reading column and the search box is the one that
+     * can give**, so it is narrower here than the library's own default: a signed-in administrator
+     * has a name, a picture, three links, a button and the theme control beside it, and a search box
+     * taking twenty-six rem of a forty-eight rem column is what pushes all of them onto a second
+     * line. */
+    & .m-search {
+        flex: 1 1 10rem;
+        max-width: 14rem;
+    }
+
+    /* The board is a reading column and its header is a row of small controls; a link in that row is
+     * ink rather than accent, because eight accent links across the top of a page is not a hierarchy
+     * -- it is a stripe. */
+    & .m-me .plain {
+        color: var(--m-ink-soft);
+        font-size: var(--m-text-ui);
+        font-weight: var(--m-weight-medium);
+        text-decoration: none;
+        white-space: nowrap;
+        padding: var(--m-space-1) 0;
+
+        &:hover { color: var(--m-ink); }
+    }
+
+    /* Somebody's own name in the header, with their picture in front of it. */
+    & .m-me .who {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--m-space-2);
+    }
+
+    /* **The one call to action on the page for somebody who is not signed in**, and the only filled
+     * thing in the header. It is a link and not a button: joining is somewhere to go. */
+    & .m-me .join {
+        background: var(--m-accent);
+        color: var(--m-accent-ink);
+        border-radius: var(--m-pill);
+        padding: var(--m-space-1) var(--m-space-4);
+
+        &:hover {
+            background: var(--m-accent-strong);
+            color: var(--m-accent-ink);
+        }
+    }
+
+    /* The light/dark control. **Smaller than the segmented control in the page**, a header being a
+     * row of things a reader is not looking at. */
+    & .m-me .theme .m-seg {
+        font-size: var(--m-text-xs);
+        padding: var(--m-space-1) var(--m-space-3);
+    }
+
+    /* The routed view. `flow-root` is what keeps a page's first heading from pushing the whole
+     * column down past the header: a margin that escapes its box is a gap nobody asked for. */
+    & .page {
+        display: flow-root;
+
+        & > :first-child { margin-top: 0; }
+        & > :last-child { margin-bottom: 0; }
+    }
+
+    /* **A page that is nothing but one message gets air above it** rather than sitting against the
+     * header: the shell zeroes a page's first margin so that a heading does not push the column
+     * down, and a lone empty state is the case where that reads as crowding. */
+    & .page.missing,
+    & .page.hint { padding-top: var(--m-space-6); }
+
+    /* The three quiet sentences a page says about itself, in one place because they read as one
+     * voice: nothing is here, nothing has arrived yet, and there is something you could do. */
+    & .pending,
+    & .empty {
+        color: var(--m-ink-faint);
+        font-style: italic;
+        margin-block: var(--m-space-4);
+    }
+
+    & .m-live { margin-block: var(--m-space-6); }
+
+    & .hint {
+        color: var(--m-ink-soft);
+        margin-block: var(--m-space-6);
+    }
+
+    /* The footer is one line and it is the quietest thing on the page. */
+    & .m-foot p {
+        margin: 0;
+        text-wrap: balance;
+    }
+
+    /* **At a phone's width the header's account row wraps and stops being a row of eight.** The
+     * theme control goes to the end of its own line, which is where a thing nobody presses twice
+     * belongs. */
+    @media (width < 34rem) {
+        & .m-me {
+            gap: var(--m-space-2) var(--m-space-3);
+            font-size: var(--m-text-sm);
+        }
+
+        & .m-me .theme { margin-left: auto; }
+    }
+}

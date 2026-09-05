@@ -1,0 +1,67 @@
+/* The thread list: the bar of filters above it, and the rhythm of the page it sits on.
+ *
+ * **THE CARDS THEMSELVES ARE NOT STYLED HERE AND THAT IS THE POINT.** A `ThreadCard` is a `mortar`
+ * component with its own sheet -- the title, the byline, the excerpt in the reading face, the tag
+ * pills and the reply count are all the library's, in both themes, checked for contrast. What this
+ * board owns is where the controls stand and how much air is around them.
+ */
+
+.mortar.board .list {
+    /* **The filters are one band and not two rows of loose pills.** A sort order and a tag filter
+     * are the same kind of decision -- what this list is showing -- so they sit on one surface, with
+     * the sort first because it is the one that always applies. */
+    & .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--m-space-3) var(--m-space-5);
+        padding: var(--m-space-4) var(--m-space-5);
+        margin-bottom: var(--m-space-6);
+        background: var(--m-raised);
+        border: 1px solid var(--m-line);
+        border-radius: var(--m-radius-lg);
+        box-shadow: var(--m-shadow-sm);
+
+        /* The two controls give up their own vertical margins to the band. */
+        & > * { margin-block: 0; }
+
+        /* **The tags take the rest of the line and wrap inside it**, a board with thirty tags being
+         * the ordinary case rather than the awkward one. */
+        & .m-tags {
+            flex: 1 1 12rem;
+            justify-content: flex-end;
+        }
+    }
+
+    /* A page number belongs to the list above it and not to the page, so it is pulled in closer than
+     * the shell's own rhythm would put it and separated by a hairline instead. */
+    & .m-pager {
+        margin-top: var(--m-space-7);
+        padding-top: var(--m-space-5);
+        border-top: 1px solid var(--m-line-soft);
+    }
+
+    & .m-empty { margin-block: var(--m-space-8); }
+
+    /* **At a phone's width the band stops being a band.** Two rows of controls with a hairline
+     * between them reads better than eight pills wrapped four times, and the sort keeps the first
+     * line because it is the one always in force. */
+    @media (width < 34rem) {
+        & .controls {
+            flex-direction: column;
+            align-items: stretch;
+            gap: var(--m-space-3);
+            padding: var(--m-space-3) var(--m-space-4);
+
+            /* **`flex: 1 1 12rem` above is a WIDTH in a row and a HEIGHT in a column**, which is
+             * the one thing that changes meaning when a flex container turns, so the growth is
+             * given back here rather than left to make a twelve-rem hole under the tags. */
+            & .m-tags {
+                flex: 0 1 auto;
+                justify-content: flex-start;
+                padding-top: var(--m-space-3);
+                border-top: 1px solid var(--m-line-soft);
+            }
+        }
+    }
+}

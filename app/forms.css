@@ -1,0 +1,47 @@
+/* The forms that are pages: signing in, joining, and starting a thread.
+ *
+ * **A FIELD, A LABEL, AN ERROR, A HINT AND A BUTTON ARE ALL `mortar`'s** -- the well a control is cut
+ * into, the mark on a required label, the `aria-describedby` between a field and what went wrong with
+ * it. What is left for this file is how wide a form is and what stands under it.
+ */
+
+.mortar.board {
+    /* **A sign-in form is narrow because it is two fields**, and a form as wide as the reading column
+     * with two fields in it looks like a form that lost the rest of itself. */
+    & .sign {
+        max-width: 26rem;
+        margin-inline: auto;
+    }
+
+    /* Starting a thread is the widest form on the board: a title, eight lines of writing, tags and a
+     * picture. It takes the column. */
+    & .compose { max-width: none; }
+
+    & .sign h1,
+    & .compose h1 {
+        margin-bottom: var(--m-space-5);
+        text-align: center;
+    }
+
+    & .compose h1 { text-align: left; }
+
+    /* **A form whose heading is centred has a centred button**, which the sign-in card is the only
+     * one of: everything else on the board reads left to right down a column. */
+    & .sign .m-do { justify-content: center; }
+
+    & .reply-form h2 { margin-top: 0; }
+
+    /* The other way in, under the button. **Quiet, centred, and one line**, because it is the thing
+     * for the one reader in twenty who is on the wrong form. */
+    & .aside {
+        margin: var(--m-space-5) 0 0;
+        padding-top: var(--m-space-4);
+        border-top: 1px solid var(--m-line-soft);
+        text-align: center;
+        font-size: var(--m-text-ui);
+        color: var(--m-ink-soft);
+    }
+
+    /* A page that is nothing but a form gets air above it rather than sitting under the header. */
+    & .sign-page { padding-top: var(--m-space-6); }
+}

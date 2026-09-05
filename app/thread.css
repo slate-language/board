@@ -1,0 +1,60 @@
+/* One thread: the post at the top, the replies under it, and the form at the foot.
+ *
+ * **A REPLY HANGS OFF THE POST ABOVE IT ON A RAIL AND THAT IS `mortar`'s RULE, NOT THIS BOARD'S.**
+ * What is here is the join between the three -- how far the replies sit under the post, what the
+ * count between them looks like, and where a delete button goes.
+ */
+
+.mortar.board .thread {
+    /* **The reply count is a label and not a heading**, even though it is an `<h2>`: it names the
+     * list under it for a screen reader and it should not compete with the post's title for a pair
+     * of eyes. The rule to its right is what makes it read as a divider. */
+    & .count {
+        display: flex;
+        align-items: center;
+        gap: var(--m-space-4);
+        margin: var(--m-space-8) 0 var(--m-space-4);
+        font-size: var(--m-text-ui);
+        font-weight: var(--m-weight-semi);
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--m-ink-faint);
+
+        &::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--m-line);
+        }
+    }
+
+    /* **A destructive control is at the END of the thing it destroys and is small.** Floating it
+     * beside the title -- which is what this board did before -- puts the one irreversible button on
+     * the page directly under the reader's eye on the way in. */
+    & .drop {
+        display: block;
+        margin-top: var(--m-space-4);
+        text-align: right;
+    }
+
+    & .m-reply .drop {
+        margin-top: var(--m-space-2);
+        opacity: .55;
+        transition: opacity var(--m-quick) var(--m-ease);
+    }
+
+    /* It comes up on hover and it is always there for a keyboard, which is the pair that makes a
+     * quiet control quiet rather than hidden. */
+    & .m-reply:hover .drop,
+    & .m-reply .drop:focus-within { opacity: 1; }
+
+    /* The form is the last thing on the page and it is the one surface a reader is going to write
+     * on, so it gets a step more air than the rhythm would give it. */
+    & .reply-form { margin-top: var(--m-space-8); }
+
+    & .hint {
+        margin-top: var(--m-space-8);
+        padding-top: var(--m-space-5);
+        border-top: 1px solid var(--m-line-soft);
+    }
+}

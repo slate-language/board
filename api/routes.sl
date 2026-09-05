@@ -11,10 +11,10 @@
 
 import { api, body, csrf, hub, json, lastEventId, logger, problem, rateLimit, requestId, session,
     sse, stack, timeout } from sluice
-import { files, setCookie } from slate:http
+import { files } from slate:http
 
-import { answered, backTo, moved, themeOf, wantsJson, whoIs } from "./render.sl"
-import { formCsrf, given, titleFor, withCookie } from "./forms.sl"
+import { answered, backTo, moved, wantsJson, whoIs } from "./render.sl"
+import { formCsrf, given, titleFor } from "./forms.sl"
 import { keep, kindOf, pick, stored } from "./uploads.sl"
 
 // -- what a client may send ------------------------------------------------------------------------
@@ -141,7 +141,6 @@ export application(store: object, sessions: object, options: object = {}) -> obj
     app.post("/signup", posted(Credentials)((req) -> joined(store, req)))
     app.post("/signin", posted(Credentials)((req) -> signedIn(store, req)))
     app.post("/signout", posted(Nothing)((req) -> signedOut(req)))
-    app.post("/theme", posted(Nothing)((req) -> themed(req)))
     app.post("/threads", posted(NewThread)((req) -> started(store, req)))
     app.post("/threads/:id/replies", posted(NewReply)((req) -> replied(store, feed, req)))
     app.post("/threads/:id/delete", posted(Nothing)((req) -> droppedThread(store, req)))
@@ -303,16 +302,10 @@ signedOut(req: object)
 
     moved(req, null)
 
-// -- the theme -----------------------------------------------------------------------------------
-
-// **A cookie and not a session member**, so that a reader who has never signed in still gets the theme
-// they chose -- and so that the server already knows it when it renders, which is what keeps a dark
-// page from flashing white on the way in.
-themed(req: object)
-    val next = if themeOf(req) == "dark" then "light" else "dark"
-
-    withCookie(moved(req, null), setCookie("theme", next,
-        { path: "/", maxAge: 31536000, sameSite: "Lax", httpOnly: false }))
+// **THERE IS NO `/theme` ROUTE, AND THAT IS THE POINT OF PUTTING THE THEME IN THE ADDRESS.** It was a
+// `POST` writing a cookie until the board moved to `mortar`'s arrangement; now `?theme=dark` is read
+// off the request by `api/render.sl` and changed by following a link, so there is nothing to post,
+// nothing to set and nothing a reader with no script running cannot do.
 
 // -- posting -------------------------------------------------------------------------------------
 

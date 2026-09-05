@@ -13,6 +13,7 @@
 
 import { json } from sluice
 import { html, mount } from lath
+import { addressIs } from lath/router
 
 import { App } from "../app/pages.slx"
 import { page, titleOf } from "../app/shell.sl"
@@ -34,21 +35,45 @@ export wantsJson(req: object) -> boolean
 
     contains(accept, "application/json") && !contains(accept, "text/html")
 
+// The query parameter that says which colours to render in.
+val Theme = "theme"
+
 // The address this request is at, as the page will hold it.
 //
 // **`format` is dropped**, being about the answer rather than about the page: the state a browser
 // hydrates against has to name the address a person is on, and `/?format=json` is not an address
 // anybody is on.
+//
+// **`theme` IS NORMALISED HERE AND THAT IS THE SERVER'S JOB.** `mortar`'s `Theme` refuses a `?theme`
+// that is neither word -- deliberately, so that a program writing a wrong one is told -- but a query
+// string is something anybody may type, so a value out of a request is not a program's mistake and
+// may not be a `500`. Anything that is not `dark` is dropped, which is also the canonical spelling of
+// light: the default never rides in an address the board rendered.
 export addressOf(req: object) -> string
     var query = {}
 
     for [name, value] in entries(req.query ?? {})
-        if name != Format then query[name] = value
+        if name == Format then continue
+
+        if name == Theme
+            if value == "dark" then query[name] = "dark"
+
+            continue
+
+        query[name] = value
 
     req.path + searchOf(query)
 
-// `"light"` or `"dark"`, from the cookie the theme form writes.
-export themeOf(req: object) -> string = if (req.cookies["theme"] ?? "") == "dark" then "dark" else "light"
+// `"light"` or `"dark"`, from the address.
+//
+// **THE THEME IS A QUERY PARAMETER AND NOT A COOKIE**, which is `mortar`'s arrangement and is the one
+// worth having: `?theme=dark` is something a person can bookmark and send to somebody else, the
+// server can read it off the request and render a dark page the first time, and a reader whose script
+// never ran can still change it by following a link. A cookie buys a URL with nothing in it and costs
+// a route, a `Set-Cookie` and a page that cannot be linked to in the colour it was read in.
+//
+// **Anything that is not `dark` is light**, a query string being something anybody may type.
+export themeOf(req: object) -> string = if (req.query[Theme] ?? "") == "dark" then "dark" else "light"
 
 // Who is asking, or `null`. **`null` is a page's ordinary case and never a failure** -- a board is
 // something to read before it is something to join.
@@ -69,11 +94,16 @@ export answered(req: object, data: object, status: integer = 200) -> object
 
     if wantsJson(req) then return json(state, status)
 
+    // **`lath/router` is told where the page is before anything renders.** `router()` does it too,
+    // but `Theme` stands ABOVE the router in the tree and reads `?theme` with `useSearch` -- so a
+    // page whose theme was decided by whichever expression happened to be evaluated first would be a
+    // page that worked by accident.
+    addressIs(state.url)
+
     val markup = html(mount(App({ nav: { url: state.url, go: null, replace: null },
                                   data: data,
                                   user: state.user,
                                   csrf: state.csrf,
-                                  theme: state.theme,
                                   send: null })))
 
     { status: status,

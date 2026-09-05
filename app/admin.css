@@ -1,0 +1,59 @@
+/* The two tables an administrator reads: everybody, and everybody signed in now.
+ *
+ * **A TABLE IS THE RIGHT ELEMENT HERE AND A GRID OF DIVS IS NOT.** These are rows of one shape being
+ * compared down a column, which is what a header cell is for and what a screen reader announces its
+ * way through; the styling below is a table made quiet, not a table made to look like something
+ * else.
+ */
+
+.mortar.board .admin {
+    /* **A table is the one thing on this board that may be wider than the column**, a name and a
+     * date and a control not always fitting across 320 pixels -- so it scrolls inside its own box
+     * rather than pushing the page sideways. */
+    & .rows {
+        overflow-x: auto;
+        margin-block: var(--m-space-4) var(--m-space-6);
+        border: 1px solid var(--m-line);
+        border-radius: var(--m-radius);
+        background: var(--m-raised);
+    }
+
+    & table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--m-text-ui);
+    }
+
+    & th {
+        text-align: left;
+        font-size: var(--m-text-xs);
+        font-weight: var(--m-weight-semi);
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--m-ink-faint);
+        background: var(--m-sunken);
+        padding: var(--m-space-2) var(--m-space-4);
+        border-bottom: 1px solid var(--m-line);
+        white-space: nowrap;
+    }
+
+    & td {
+        padding: var(--m-space-3) var(--m-space-4);
+        border-bottom: 1px solid var(--m-line-soft);
+        vertical-align: middle;
+    }
+
+    & tbody tr:last-child td { border-bottom: 0; }
+
+    & tbody tr:hover td { background: var(--m-sunken); }
+
+    /* The name of a live session is the one thing in these tables worth reading first. */
+    & td.who { font-weight: var(--m-weight-medium); }
+
+    & .m-at {
+        color: var(--m-ink-faint);
+        white-space: nowrap;
+    }
+
+    & .drop { float: right; }
+}

@@ -4,6 +4,7 @@ A discussion board, written in [slate](https://github.com/slate-language/slate) 
 server, the SQL, the pages, and the program that runs in the browser. It is one application over the
 whole stack — [sluice](https://github.com/slate-language/sluice) answering HTTP,
 [lath](https://github.com/slate-language/lath) rendering the pages twice,
+[mortar](https://github.com/slate-language/mortar) supplying what a page is made of,
 [pg](https://github.com/slate-language/pg) speaking to PostgreSQL, and
 [logger](https://github.com/slate-language/logger) taking the line each request leaves behind.
 
@@ -14,7 +15,7 @@ costs the rows and nothing else — no markup, no stylesheet, no second copy of 
 
 ## Running it
 
-You need PostgreSQL and slate 0.0.30 or later.
+You need PostgreSQL and slate 0.0.31 or later.
 
 ```
 slate scripts/migrate.sl
@@ -24,8 +25,10 @@ PORT=8080 slate server.sl
 
 `scripts/migrate.sl` applies `schema.sql`, whose every statement is `if not exists`, so running it
 twice does what running it once did. `scripts/build.sl` writes `public/app.js`, which is
-`slate js client.slx` — one self-contained file, no bundler and nothing to install beside it. The
-board runs without it and loses only its live replies and its reload-free posts.
+`slate js client.slx` — one self-contained file, no bundler and nothing to install beside it. It is
+the only thing under `public/` and the only thing the board serves off the disk; the stylesheets
+travel inside the program. The board runs without it and loses only its live replies and its
+reload-free posts.
 
 | | |
 |---|---|
@@ -82,9 +85,18 @@ repository and of nothing else; a program that uses these packages never sees np
 - **Every operational guard.** A request id on every answer, a deadline, a rate limit, a health check
   that is a round trip to the database rather than a flag in the process, and a `SIGTERM` that stops
   taking requests, finishes what is in hand, and only then lets go of the socket.
-- **Search, filter, sort and pages, in the URL.** Every one of them is an ordinary link carrying the
-  whole address, so they work on a page whose script never ran — and a cmd-click opens the filtered
-  list in a tab.
+- **Search, filter, sort, pages and the theme, in the URL.** Every one of them is an ordinary link
+  carrying the whole address, so they work on a page whose script never ran — and a cmd-click opens
+  the filtered list in a tab. `?theme=dark` is one of them: the server reads it off the request and
+  renders a dark page, so there is no first paint in the wrong colours and nothing for a hydrating
+  page to correct.
+- **A stylesheet is a file, and there is nothing to serve.** Every page is built out of `mortar`
+  components, and each of them brings its own sheet with `lath`'s `style(css)` — a `.css` file the
+  compiler reads into the program. The board's own layout sits beside its pages the same way
+  (`app/list.css`, `app/thread.css`, and four more). So a page carries a `<style>` for exactly the
+  components it rendered, there is no `<link rel="stylesheet">` and no second request before the
+  first paint, and a hydrating page writes none of them again. No build step, no preprocessor and
+  nothing to configure.
 - **A boundary.** A thread the page cannot render leaves the header, the footer and the reply form
   where they are.
 

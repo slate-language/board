@@ -1,248 +1,35 @@
-// The pieces every page is built out of.
+// The few pieces of the board that `mortar` does not already own.
+//
+// **This file used to be the board's own component library and is now four things**, which is what
+// installing `mortar` bought: the avatar, the byline, the timestamp, the photo, the tag pills, the
+// sort control, the pager, the fields, the problem document and the thread card were all written
+// here once, and every one of them is now a component with its own stylesheet, its own prop checks
+// and its own accessibility. What is left is what is genuinely this board's.
 //
 // **Nothing here imports a host**, so each of these renders to markup on the server and into the
 // document in a browser, and `tests/pages.sl` asserts the markup one of them made with no document
 // anywhere.
 
-import { createElement, useContext, memo } from lath
-import { Link } from lath/router
-import { epochSeconds } from slate:time
-
-import { Nav, Session } from "./context.sl"
-import { useSearch, withSearch } from "./search.sl"
-
-// -- when -----------------------------------------------------------------------------------------
-
-// A moment, from the epoch seconds a row carries.
-//
-// **It never asks what time it is now**, and that is a hydration rule rather than a style: a server
-// rendering *"4 minutes ago"* and a browser adopting it a second later would disagree about the text,
-// and a mismatch is a fault by design. The stamp is UTC for the same reason -- two hosts in two zones
-// are two answers to one question.
-export At({ at = 0 }) =
-    val stamp = string(epochSeconds(at))
-    val out = <time class="at" datetime={stamp} title={stamp}>{stamp[0..<10]}</time>
-
-    out
-
-// -- people ---------------------------------------------------------------------------------------
-
-// Somebody's picture, or the first letter of their name where they have none.
-export Avatar({ name = "?", file = null, size = "small" }) =
-    val letter = if len(name) == 0 then "?" else upper(name[0..<1])
-    val out = if file == null
-        <span class={"avatar mono " + size} aria-hidden="true">{letter}</span>
-    else
-        <img class={"avatar " + size} src={"/uploads/" + file} alt={name}/>
-
-    out
-
-// Who wrote a post, and when.
-export Byline({ name = "?", avatar = null, at = 0 }) =
-    val out = <p class="byline">
-        <Avatar name={name} file={avatar}/>
-        <Link class="who" to={"/people/" + name}>{name}</Link>
-        <At at={at}/>
-    </p>
-
-    out
-
-// -- pictures -------------------------------------------------------------------------------------
-
-// A photo on a post. **The alt text is the poster's title and not the file name**, which is what a
-// person listening to the page needs.
-export Photo({ file = null, alt = "" }) =
-    val out = if file == null then <span class="no-photo"/> else
-        <p class="photo"><img src={"/uploads/" + file} alt={alt} loading="lazy"/></p>
-
-    out
-
-// -- the search state on a link -------------------------------------------------------------------
-
-// Whether a click is one a page may take, or one the browser must have. **Without the modifiers and
-// the button a page swallows the most ordinary thing anybody does to a link** -- cmd-click opens a
-// tab, shift-click a window, middle-click a tab, and every one of those is the browser's.
-plain(e: object) -> boolean =
-    e.button == 0 && !e.mods.meta && !e.mods.ctrl && !e.mods.shift && !e.mods.alt
-
-// A link that changes the query string rather than the path.
-//
-// **It is a real `<a href>` carrying the whole address it would go to**, so the sort, the tag and the
-// page numbers all work on a page whose script never ran -- and a cmd-click opens the filtered list in
-// a tab, because what was rendered is an anchor. Where the page is hydrated the click is taken instead
-// and `useSearch`'s `set` rewrites the address in place.
-export Refine(props: object) =
-    val nav = useContext(Nav)
-    val search = useSearch()
-    val set = search[1]
-    val changes = props.changes ?? {}
-
-    taken(e)
-        if !plain(e) then return null
-
-        e.prevent()
-
-        set(changes)
-
-    val out = <a class={props.class ?? "refine"}
-                 href={withSearch(nav.url, changes)}
-                 onClick={taken}>{props.children ?? []}</a>
-
-    out
-
-// -- the list's controls --------------------------------------------------------------------------
-
-val Orders = [{ key: "newest", label: "newest" },
-              { key: "active", label: "recently active" },
-              { key: "busiest", label: "most replies" }]
-
-export SortBar({ sort = "newest" }) =
-    val orders = Orders
-    val one = (o) -> <li key={o.key} class={if o.key == sort then "on" else "off"}>
-        <Refine changes={{ sort: o.key, page: null }}>{o.label}</Refine>
-    </li>
-    val out = <ul class="sorts">{orders.map(one)}</ul>
-
-    out
-
-// The tags a board has, as a filter. `on` is the one being filtered by, and choosing it again clears
-// the filter -- which is what `tag: null` says.
-export TagBar({ tags = [], on = "" }) =
-    val labels = tags
-    val one = (t) -> <li key={t.tag} class={if t.tag == on then "on" else "off"}>
-        <Refine changes={{ tag: if t.tag == on then null else t.tag, page: null }}>
-            {t.tag}<span class="count">{t.count}</span>
-        </Refine>
-    </li>
-    val out = <ul class="tags">{labels.map(one)}</ul>
-
-    out
-
-// The tags of one thread, each a filter on the list.
-export TagList({ tags = [] }) =
-    val labels = tags
-    val one = (t) -> <li key={t}><a class="tag" href={"/?tag=" + t}>{t}</a></li>
-    val out = if len(labels) == 0 then <span class="no-tags"/> else
-        <ul class="tag-list">{labels.map(one)}</ul>
-
-    out
-
-// **Page numbers rather than *load more***, which is what LIMIT/OFFSET is for and is why the store
-// answers a total beside the rows: a person who wants the fourth page can ask for it, and the number
-// of pages is on the screen.
-export Pager({ page = 1, size = 20, total = 0 }) =
-    val pages = if total == 0 then 1 else ((total + size - 1) / size)
-    val back = if page <= 1 then <span class="step off">previous</span> else
-        <Refine class="step" changes={{ page: page - 1 }}>previous</Refine>
-    val on = if page >= pages then <span class="step off">next</span> else
-        <Refine class="step" changes={{ page: page + 1 }}>next</Refine>
-    val out = <nav class="pager">
-        {back}
-        <span class="where">page {page} of {pages}<span class="total">{total} threads</span></span>
-        {on}
-    </nav>
-
-    out
-
-// -- forms ----------------------------------------------------------------------------------------
-
-// The hidden field every form of ours carries.
-//
-// **A form is posted by a browser with no script running**, so the token cannot travel in a header --
-// which is what `sluice`'s own `csrf` guard asks for. `api/forms.sl` takes either.
-export Token(props: object) =
-    val session = useContext(Session)
-    val out = <input type="hidden" name="_csrf" value={session.csrf}/>
-
-    out
-
-// The attributes a field only sometimes has, as an object to spread into the tag.
-//
-// One labelled field, with whatever the server said was wrong with it underneath.
-//
-// **The fields are UNCONTROLLED and their values live in a `useRef`**, which is what keeps a form from
-// re-rendering on every keystroke -- and, for a `<textarea>`, is the only arrangement that works at
-// all: a textarea's text is its *default* value, so rewriting the child of one somebody is typing in
-// changes nothing they can see and is a mutation for nothing.
-//
-// **A `required` a field has not got is written as `null` and the two hosts agree that is no
-// attribute**, which is HTML's own rule and `lath`'s in both directions as of 0.5.1 -- so the
-// sometimes-attributes are ordinary props here rather than an object assembled first.
-export Field(props: object) =
-    val name = props.name
-    val id = "f-" + name
-    val note = props.note ?? null
-    val kind = props.kind ?? "text"
-    val box = if (props.lines ?? 0) > 0
-        <textarea id={id} name={name} rows={props.lines} onInput={props.onInput ?? null}
-                  required={props.required ?? null} placeholder={props.placeholder ?? null}
-                  autocomplete={props.autocomplete ?? null} min={props.min ?? null}
-                  max={props.max ?? null}>{props.value ?? ""}</textarea>
-    else
-        // **A file input is given no `value` at all**, a browser refusing to be told what file is in
-        // one -- so the member is absent rather than empty.
-        <input id={id} name={name} type={kind} onInput={props.onInput ?? null}
-               {...(if kind == "file" then {} else { value: props.value ?? "" })}
-               required={props.required ?? null} placeholder={props.placeholder ?? null}
-               autocomplete={props.autocomplete ?? null} accept={props.accept ?? null}
-               min={props.min ?? null} max={props.max ?? null}/>
-    val out = <p class="field">
-        <label for={id}>{props.label ?? name}</label>
-        {box}
-        {if note == null then <span class="no-note"/> else <span class="note">{note}</span>}
-    </p>
-
-    out
-
-// What an `onInput` is for a field whose value lives in a ref.
-//
-// **A named inner function and not a lambda**, an assignment not being an expression and a lambda's
-// one-line body being one.
-export into(cell: object) -> function
-    typed(e: object)
-        cell.current = e.value
-
-    typed
-
-// What the server said went wrong, where it said anything.
-//
-// **The list of reasons is the shape's own.** `body(Shape)` and `api/forms.sl`'s `formBody(Shape)`
-// both answer a problem document carrying every reason a value did not fit rather than the first, so a
-// person filling in a form is told about all of it at once.
-export Problem({ detail = null, mismatch = [] }) =
-    val reasons = mismatch
-    val one = (r) -> <li key={r.path}>{said(r)}</li>
-    val out = if detail == null then <span class="no-problem"/> else
-        <div class="problem" role="alert">
-            <p>{detail}</p>
-            {if len(reasons) == 0 then <span class="no-reasons"/> else <ul>{reasons.map(one)}</ul>}
-        </div>
-
-    out
-
-// One reason a value did not fit its declaration, as a sentence.
-//
-// **A mismatch is `{ path, wanted, got }` and not a string**, which is the right shape for a machine
-// reading a problem document and the wrong one for somebody looking at a form. `got: "nothing"` is a
-// field that was not sent at all, which is the ordinary case and reads badly as *"got nothing"*.
-said(r: object) -> string
-    val where = if r.path == "" then "the form" else r.path
-
-    if r.got == "nothing" then return where + " is missing"
-
-    where + " should be " + r.wanted + " and is " + r.got
+import { createElement, memo } from lath
+import { ThreadCard } from mortar
 
 // -- a thread, in a list --------------------------------------------------------------------------
 
+// Where a tag goes as an address.
+//
+// **A module-level function and not a lambda built per render**, which is what makes the `memo`
+// below worth anything: a fresh closure handed down as a prop is a prop that differs on every
+// render, and a memoised component whose props always differ is a memoised component that always
+// renders.
+export tagged(t: string) -> string = "/?tag=" + t
+
 card(props: object) =
     val t = props.thread
-    val out = <li class="thread-card">
-        <h2><Link to={"/threads/" + string(t.id)}>{t.title}</Link></h2>
-        <Byline name={t.author_name} avatar={t.author_avatar} at={t.made}/>
-        <p class="excerpt">{excerpt(t.body)}</p>
-        <TagList tags={t.tags ?? []}/>
-        <p class="replies">{t.replies} replies</p>
-    </li>
+    val out = <ThreadCard title={t.title} href={"/threads/" + string(t.id)}
+                          name={t.author_name} src={pictureOf(t.author_avatar)}
+                          authorHref={"/people/" + t.author_name} at={t.made}
+                          excerpt={excerpt(t.body)} tags={t.tags ?? []} tagHref={tagged}
+                          replies={t.replies}/>
 
     out
 
@@ -255,3 +42,24 @@ excerpt(body: string) -> string =
     val one = replace(trim(body), "\n", " ")
 
     if len(one) <= 160 then one else one[0..<160] + "..."
+
+// -- what the store keeps, as what a component takes ------------------------------------------------
+
+// A row's file name as a URL, or `null` where there is no file.
+//
+// **The store keeps a PATH and a component takes a `src`**, and this is the one line between them:
+// `/uploads/` is where `api/routes.sl` answers a photograph from, and a component has no business
+// knowing that.
+export pictureOf(file) = if file == null then null else "/uploads/" + string(file)
+
+// -- forms ------------------------------------------------------------------------------------------
+
+// What an `onInput` is for a field whose value lives in a ref.
+//
+// **A named inner function and not a lambda**, an assignment not being an expression and a lambda's
+// one-line body being one.
+export into(cell: object) -> function
+    typed(e: object)
+        cell.current = e.value
+
+    typed

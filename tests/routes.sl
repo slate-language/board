@@ -9,7 +9,7 @@
 // SQL, and `tests/postgres.sl` is that half.
 
 import { response } from sluice
-import { remove } from slate:fs
+import { exists, remove } from slate:fs
 import { files } from slate:http
 
 import { application } from "../api/routes.sl"
@@ -79,7 +79,8 @@ async THE_FRONT_PAGE_IS_MARKUP_A_READER_CAN_READ_WITH_NO_SCRIPT()
     assertEq(status(reply), 200)
     assert(contains(string(header(reply, "content-type")), "text/html"))
     assert(shows(reply, "Hello from slate"), "the list names its threads")
-    assert(shows(reply, "<form class=\"find\" method=\"get\" action=\"/\""), "the search box is a real form")
+    assert(shows(reply, "<form class=\"m-form m-search\" action=\"/\" method=\"get\""),
+        "the search box is a real form")
     assert(shows(reply, "href=\"/threads/1\""), "a thread is a real anchor")
 
 @test
@@ -592,18 +593,29 @@ async AN_ADMINISTRATOR_SEES_WHO_IS_SIGNED_IN_AND_CAN_END_IT()
 // -- the theme ------------------------------------------------------------------------------------------
 
 @test
-async THE_THEME_IS_A_COOKIE_THE_SERVER_ALREADY_KNOWS_WHEN_IT_RENDERS()
+async THE_THEME_IS_IN_THE_ADDRESS_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDERS()
     val it = made()
     val first = await it.at.get("/")
 
-    assert(shows(first, "class=\"board light\""))
+    assert(shows(first, "data-theme=\"light\""))
 
-    await it.at.form("/theme", { back: "/" })
+    // **No form, no cookie and no second request**: the choice is a link, so this is the same GET
+    // anybody could have typed or bookmarked.
+    val dark = await it.at.get("/?theme=dark")
 
-    val dark = await it.at.get("/")
+    assert(shows(dark, "class=\"mortar board\" data-theme=\"dark\""),
+        "and the markup carries it, so nothing flashes white")
+    assert(shows(dark, "<html lang=\"en\" data-theme=\"dark\">"), "on the document too")
 
-    assert(shows(dark, "class=\"board dark\""), "and the markup carries it, so nothing flashes white")
-    assert(shows(dark, "<html lang=\"en\" class=\"dark\">"), "on the document too")
+    // **The control is two real anchors**, which is what makes the theme something a reader with no
+    // script running can change.
+    assert(shows(dark, "<a class=\"m-seg\" href=\"/\">Light</a>"))
+
+@test
+async ANYTHING_THAT_IS_NOT_dark_IS_LIGHT_BECAUSE_A_QUERY_IS_SOMETHING_ANYBODY_MAY_TYPE()
+    val it = made()
+
+    assert(shows(await it.at.get("/?theme=chartreuse"), "data-theme=\"light\""))
 
 // -- where a form says to go back to ------------------------------------------------------------------
 
@@ -668,7 +680,7 @@ async canServe() -> boolean
     val serve = files("./public", {})
 
     try
-        await serve({ method: "GET", path: "/assets/style.css", params: { rest: "style.css" },
+        await serve({ method: "GET", path: "/assets/app.js", params: { rest: "app.js" },
                       headers: {}, query: {}, cookies: {} })
 
         return true
@@ -676,21 +688,28 @@ async canServe() -> boolean
         return false
 
 @test
-async THE_STYLESHEET_IS_SERVED_OFF_THE_DISK_AND_NOTHING_ELSE_IS()
+async THE_BROWSER_PROGRAM_IS_SERVED_OFF_THE_DISK_AND_NOTHING_ELSE_IS()
     if !(await canServe()) then skip("slate:http's files() faults on this host: a stat has no mtime")
+    if !(await exists("./public/app.js"))
+        skip("the browser program has not been built: slate js client.slx -o public/app.js")
 
     val it = made()
-    val css = await it.at.get("/assets/style.css")
+    val js = await it.at.get("/assets/app.js")
 
-    assertEq(status(css), 200)
+    assertEq(status(js), 200)
 
     // **A file off the disk arrives as BYTES**, which is what `slate:http`'s `files` answers for
-    // everything it serves -- a stylesheet and a font are read the same way, and only the reader
-    // knows which is text.
-    val body = response(css).body
+    // everything it serves -- a program and a font are read the same way, and only the reader knows
+    // which is text.
+    val body = response(js).body
     val said = if body is string then body else fromBytes(body).value
 
-    assert(contains(said, ".board"), "the board's own stylesheet")
+    assert(contains(said, "board-state"), "the board's own browser program")
+
+    // **THERE IS NO STYLESHEET TO SERVE ANY MORE.** Every sheet on a page is a file the compiler read
+    // into the program and `lath`'s string host wrote into the markup, so this route answers the
+    // browser program and nothing else.
+    assertEq(status(await it.at.get("/assets/style.css")), 404)
 
     // **A files route serves what is under its root and nothing above it.**
     assertEq(status(await it.at.get("/assets/nothing.css")), 404)

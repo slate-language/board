@@ -4,13 +4,27 @@
 // for this URL, where the address is -- and reaches for nothing else. That is what lets the server
 // render each of them to markup and the browser adopt the same markup and carry on: `server.sl` and
 // `client.slx` differ in the values they hand the providers and in nothing about the pages.
+//
+// **What a page is MADE of is `mortar`**, and what is written here is what this board is: which rows
+// go in the list, what a thread page holds, and where the filters sit. Each page brings its own
+// stylesheet with `style(css)`, which is layout and nothing else -- the colour, the type, the
+// spacing scale, the focus ring and both themes are the library's, and no rule here writes one.
 
-import { createElement, Fragment, Boundary, memo, useContext } from lath
+import { createElement, Fragment, Boundary, memo, style, useContext } from lath
 import { Anything, Link, router } from lath/router
+import { Avatar, CardList, EmptyState, Live, Page, Pagination, Post, PostList, Problem,
+         Segmented, SortControls, TagList, Theme, Timestamp, useTheme } from mortar
 
-import { Board, Nav, Post, Session, Theme } from "./context.sl"
-import { At, Avatar, Byline, Card, Pager, Photo, SortBar, TagBar, TagList } from "./parts.slx"
+import { Board, Nav, PostContext, Session } from "./context.sl"
+import { Card, pictureOf, tagged } from "./parts.slx"
 import { AvatarForm, Doing, ReplyForm, SearchForm, SignForm, ThreadForm } from "./forms.slx"
+import { useSearch, withSearch } from "./search.sl"
+
+import shell from "./shell.css"
+import listing from "./list.css"
+import conversation from "./thread.css"
+import people from "./profile.css"
+import staff from "./admin.css"
 
 // -- what a page shows while its data is on the way ------------------------------------------------
 
@@ -18,36 +32,68 @@ import { AvatarForm, Doing, ReplyForm, SearchForm, SignForm, ThreadForm } from "
 // router is showing a view whose data belongs to the page before it. Each view says which page it is
 // for, and this is what stands in the gap.
 export Pending(props: object) =
-    val out = <p class="pending" aria-live="polite">Fetching...</p>
+    val out = <Live><p class="pending">Fetching...</p></Live>
 
     out
 
 // -- the thread list ---------------------------------------------------------------------------------
 
+// The three orders a board may be read in. **A record per option and not a bare word**, two of the
+// three reading as something other than their key.
+val Orders = [{ value: "newest", label: "newest" },
+              { value: "active", label: "recently active" },
+              { value: "busiest", label: "most replies" }]
+
 export List(props: object) =
+    style(listing)
+
     val board = useContext(Board)
 
     if board.page != "list" then return Pending({})
 
+    val nav = useContext(Nav)
+    val search = useSearch()
+    val set = search[1]
     val list = board.threads
     val rows = list.rows
+    val on = board.tag ?? ""
+    val labels = (board.tags ?? []).map((t) -> { label: t.tag, count: t.count })
     val one = (t) -> <Card key={t.id} thread={t}/>
+
+    // **A filter and a sort order are a REAL ANCHOR carrying the whole address they would go to**,
+    // which is what `href` is for, and the click is taken by `onChoose` only where a page is
+    // hydrated. So the board sorts and filters with no script running, a cmd-click opens the
+    // filtered list in a tab, and nothing about either is a special case.
+    //
+    // **Choosing the tag already in force clears it**, which is what `tag: null` says.
+    sorted(v: string) -> string = withSearch(nav.url, { sort: v, page: null })
+    tagHref(t: string) -> string = withSearch(nav.url, { tag: if t == on then null else t, page: null })
+    paged(n: integer) -> string = withSearch(nav.url, { page: n })
+
+    choseSort(v: string) = set({ sort: v, page: null })
+    choseTag(t: string) = set({ tag: if t == on then null else t, page: null })
+    chosePage(n: integer) = set({ page: n })
 
     // **A block `if` is bound to a name before the tag rather than written inside a hole.** A hole
     // takes an expression, and slate's block `if` is a statement -- so this is the shape every
     // either-or in this file has.
     val cards = if len(rows) == 0
-        <p class="empty">Nothing here yet.</p>
+        <EmptyState title="Nothing here yet" detail="No thread matches what you asked for.">
+            <Link to="/new">Start one</Link>
+        </EmptyState>
     else
-        <ol class="threads">{rows.map(one)}</ol>
+        <CardList>{rows.map(one)}</CardList>
 
     val out = <div class="page list">
         <div class="controls">
-            <SortBar sort={board.sort ?? "newest"}/>
-            <TagBar tags={board.tags ?? []} on={board.tag ?? ""}/>
+            <SortControls options={Orders} sort={board.sort ?? "newest"} href={sorted}
+                          onChoose={choseSort}/>
+            <TagList tags={labels} href={tagHref} current={if on == "" then null else on}
+                     onChoose={choseTag}/>
         </div>
         {cards}
-        <Pager page={list.page} size={list.size} total={list.total}/>
+        <Pagination page={list.page} size={list.size} total={list.total} href={paged}
+                    onChoose={chosePage} unit="threads"/>
     </div>
 
     out
@@ -56,19 +102,15 @@ export List(props: object) =
 
 reply(props: object) =
     val r = props.reply
-
     val drop = if props.mine ?? false
         <Doing class="drop" action={"/replies/" + string(r.id) + "/delete"} label="Delete"
                tone="danger"/>
     else
-        <span class="not-mine"/>
+        null
 
-    val out = <li class="reply">
-        <Byline name={r.author_name} avatar={r.author_avatar} at={r.made}/>
-        <div class="said">{r.body}</div>
-        <Photo file={r.photo} alt={"a photo by " + r.author_name}/>
-        {drop}
-    </li>
+    val out = <Post compact name={r.author_name} src={pictureOf(r.author_avatar)}
+                    authorHref={"/people/" + r.author_name} at={r.made} body={r.body}
+                    photo={pictureOf(r.photo)} alt={"a photo by " + r.author_name}>{drop}</Post>
 
     out
 
@@ -81,6 +123,8 @@ val Reply = memo(reply)
 // defect in the program and stays a fault -- what a boundary buys is that the rest of the page, the
 // header and the reply form included, is still there to read while it is fixed.
 export Thread(props: object) =
+    style(conversation)
+
     val board = useContext(Board)
 
     if board.page != "thread" then return Pending({})
@@ -90,8 +134,7 @@ export Thread(props: object) =
     out
 
 broken(e: object) =
-    val out = <div class="problem" role="alert"><p>This thread could not be shown.</p>
-        <p class="detail">{e.message}</p></div>
+    val out = <Problem title="This thread could not be shown." detail={e.message}/>
 
     out
 
@@ -107,7 +150,7 @@ ThreadView(props: object) =
         <Doing class="drop" action={"/threads/" + string(t.id) + "/delete"} label="Delete thread"
                tone="danger"/>
     else
-        <span class="not-mine"/>
+        null
 
     val below = if session.user == null
         <p class="hint"><Link to="/signin">Sign in</Link> to reply.</p>
@@ -115,16 +158,13 @@ ThreadView(props: object) =
         <ReplyForm thread={t.id}/>
 
     val out = <div class="page thread">
-        <article class="post">
-            <h1>{t.title}</h1>
-            <Byline name={t.author_name} avatar={t.author_avatar} at={t.made}/>
-            <TagList tags={t.tags ?? []}/>
-            <div class="said">{t.body}</div>
-            <Photo file={t.photo} alt={t.title}/>
+        <Post title={t.title} name={t.author_name} src={pictureOf(t.author_avatar)}
+              authorHref={"/people/" + t.author_name} at={t.made} body={t.body}
+              photo={pictureOf(t.photo)} alt={t.title} tags={t.tags ?? []} tagHref={tagged}>
             {drop}
-        </article>
+        </Post>
         <h2 class="count">{len(rows)} replies</h2>
-        <ol class="replies">{rows.map(one)}</ol>
+        <PostList>{rows.map(one)}</PostList>
         {below}
     </div>
 
@@ -149,7 +189,11 @@ export Compose(props: object) =
     out
 
 needSignIn() =
-    val out = <div class="page hint"><p><Link to="/signin">Sign in</Link> to post.</p></div>
+    val out = <div class="page hint">
+        <EmptyState title="Members write the threads" detail="Signing in takes a moment.">
+            <Link to="/signin">Sign in</Link>
+        </EmptyState>
+    </div>
 
     out
 
@@ -172,6 +216,8 @@ export SignUp(props: object) =
 // -- somebody's page -------------------------------------------------------------------------------
 
 export Profile(props: object) =
+    style(people)
+
     val board = useContext(Board)
     val session = useContext(Session)
 
@@ -182,10 +228,10 @@ export Profile(props: object) =
     val replies = board.replies
     val itsMe = session.user != null && session.user.id == who.id
     val aThread = (t) -> <li key={t.id}><Link to={"/threads/" + string(t.id)}>{t.title}</Link>
-        <At at={t.made}/></li>
+        <Timestamp at={t.made}/></li>
     val aReply = (r) -> <li key={r.id}><Link to={"/threads/" + string(r.thread)}>{r.thread_title}</Link>
-        <At at={r.made}/></li>
-    val picture = if itsMe then <AvatarForm/> else <span class="not-mine"/>
+        <Timestamp at={r.made}/></li>
+    val picture = if itsMe then <AvatarForm/> else null
 
     val started = if len(threads) == 0
         <p class="empty">None yet.</p>
@@ -199,9 +245,11 @@ export Profile(props: object) =
 
     val out = <div class="page profile">
         <header class="who">
-            <Avatar name={who.name} file={who.avatar} size="large"/>
-            <h1>{who.name}</h1>
-            <p class="role">{who.role} since <At at={who.made}/></p>
+            <Avatar name={who.name} src={pictureOf(who.avatar)} size="large"/>
+            <div class="named">
+                <h1>{who.name}</h1>
+                <p class="role">{who.role} since <Timestamp at={who.made}/></p>
+            </div>
         </header>
         {picture}
         <section class="posts">
@@ -217,41 +265,47 @@ export Profile(props: object) =
 // -- the admin page --------------------------------------------------------------------------------
 
 export Admin(props: object) =
+    style(staff)
+
     val board = useContext(Board)
     val session = useContext(Session)
 
     if board.page != "admin" then return Pending({})
     if session.user == null || session.user.role != "admin" then return refused()
 
-    val people = board.users
+    val everybody = board.users
     val live = board.sessions
     val aPerson = (u) -> <tr key={u.id}>
         <td><Link to={"/people/" + u.name}>{u.name}</Link></td>
         <td>{u.role}</td>
-        <td><At at={u.made}/></td>
+        <td><Timestamp at={u.made}/></td>
     </tr>
     val aSession = (s) -> <tr key={s.id}>
         <td class="who">{s.name}</td>
-        <td><At at={s.at}/></td>
+        <td><Timestamp at={s.at}/></td>
         <td><Doing class="drop" action={"/admin/sessions/" + s.id + "/revoke"} label="Revoke"
                    tone="danger"/></td>
     </tr>
     val open = if len(live) == 0
         <p class="empty">Nobody is signed in.</p>
     else
-        <table class="sessions">
-            <thead><tr><th>Who</th><th>Since</th><th></th></tr></thead>
-            <tbody>{live.map(aSession)}</tbody>
-        </table>
+        <div class="rows">
+            <table class="sessions">
+                <thead><tr><th>Who</th><th>Since</th><th></th></tr></thead>
+                <tbody>{live.map(aSession)}</tbody>
+            </table>
+        </div>
 
     val out = <div class="page admin">
         <h1>Admin</h1>
         <section>
             <h2>People</h2>
-            <table class="people">
-                <thead><tr><th>Name</th><th>Role</th><th>Joined</th></tr></thead>
-                <tbody>{people.map(aPerson)}</tbody>
-            </table>
+            <div class="rows">
+                <table class="people">
+                    <thead><tr><th>Name</th><th>Role</th><th>Joined</th></tr></thead>
+                    <tbody>{everybody.map(aPerson)}</tbody>
+                </table>
+            </div>
         </section>
         <section>
             <h2>Sessions</h2>
@@ -262,7 +316,10 @@ export Admin(props: object) =
     out
 
 refused() =
-    val out = <div class="page hint"><p>That page is for administrators.</p></div>
+    val out = <div class="page hint">
+        <EmptyState title="That page is for administrators"
+                    detail="Nothing here is yours to see."/>
+    </div>
 
     out
 
@@ -270,8 +327,10 @@ refused() =
 
 export Missing(props: object) =
     val out = <div class="page missing">
-        <h1>Nothing at {props.at ?? "/"}</h1>
-        <p><Link to="/">Back to the board</Link></p>
+        <EmptyState title={"Nothing at " + (props.at ?? "/")}
+                    detail="The thread may have been deleted, or the address mistyped.">
+            <Link to="/">Back to the board</Link>
+        </EmptyState>
     </div>
 
     out
@@ -292,69 +351,118 @@ export val routes = [
     { path: Anything, view: (m) -> <Missing at={m.path}/> },
 ]
 
+// -- the theme -------------------------------------------------------------------------------------
+
+// The two words, as the two halves of a control.
+val ThemeWords = [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]
+
+// **THE THEME IS IN THE ADDRESS, WHICH IS WHY THIS IS TWO ANCHORS AND NOT A BUTTON.** `?theme=dark`
+// is something a person can bookmark and send to somebody else, the server can read it off the
+// request and render a dark page the first time, and a reader whose script never ran can still
+// change it -- none of which is true of a choice kept in `useState` or in `localStorage`.
+//
+// **The writing half is this board's `useSearch` and not `mortar`'s own setter**, and that is a
+// defect in `mortar` 0.2.0 rather than a preference: its `Theme` changes the theme with
+// `write({ theme })`, and `lath`'s `useSearch` setter takes the WHOLE query -- so toggling the theme
+// on `/?tag=slate&sort=busiest` writes `/?theme=dark` and the filter and the sort are gone. The
+// board's own `set` merges, so a member named is changed and the rest of the query is kept.
+ThemeChoice(props: object) =
+    val nav = useContext(Nav)
+    val search = useSearch()
+    val set = search[1]
+    val chosen = useTheme()
+
+    // **`theme=light` is the ABSENCE of the parameter**, so the default never rides in a URL anybody
+    // copied.
+    said(v: string) = if v == "light" then null else v
+
+    where(v: string) -> string = withSearch(nav.url, { theme: said(v) })
+    chose(v: string) = set({ theme: said(v) })
+
+    val out = <Segmented class="theme" options={ThemeWords} value={chosen[0]} href={where}
+                         onChoose={chose} label="Theme"/>
+
+    out
+
 // -- the frame -------------------------------------------------------------------------------------
 
-Head(props: object) =
-    val board = useContext(Board)
+// What the header carries about the reader: who they are, and what they may do.
+Me(props: object) =
     val session = useContext(Session)
-    val theme = useContext(Theme)
     val you = session.user
 
     val boss = if you != null && you.role == "admin"
         <Link class="plain" to="/admin">Admin</Link>
     else
-        <span class="not-admin"/>
+        null
 
     val who = if you == null
         <Fragment>
             <Link class="plain" to="/signin">Sign in</Link>
-            <Link class="plain" to="/signup">Join</Link>
+            <Link class="plain join" to="/signup">Join</Link>
         </Fragment>
     else
         <Fragment>
             <Link class="plain" to="/new">New thread</Link>
             <Link class="plain who" to={"/people/" + you.name}>
-                <Avatar name={you.name} file={you.avatar}/>{you.name}
+                <Avatar name={you.name} src={pictureOf(you.avatar)}/>{you.name}
             </Link>
             {boss}
             <Doing class="out" action="/signout" label="Sign out"/>
         </Fragment>
 
-    val out = <header class="board-head">
-        <Link class="brand" to="/">the board</Link>
-        <SearchForm q={board.q ?? ""}/>
-        <nav class="me">
-            {who}
-            <Doing class="theme" action="/theme" label={if theme == "dark" then "Light" else "Dark"}/>
-        </nav>
-    </header>
+    val out = <Fragment>{who}<ThemeChoice/></Fragment>
 
     out
 
-// The whole page below the shell: the providers, the header, the routed view and the footer.
+// The search box, as the header's own slot.
+Find(props: object) =
+    val board = useContext(Board)
+    val out = <SearchForm q={board.q ?? ""}/>
+
+    out
+
+// The header, the content and the footer, with the board's own sheet on them.
+//
+// **A component and not four lines inside `App`, because `style(css)` may only be called while
+// something is rendering** -- and `App` is *called* by the server rather than rendered, `mount` being
+// handed the element it answers. So the board's shell sheet is registered here, one level in, where
+// there is a render to register it against.
+//
+// **It also puts the sheet after `mortar`'s**, which is what a rule of this board's meant to override
+// a rule of the library's needs: two selectors of the same weight are decided by which sheet came
+// last, and `Theme` renders before this does.
+Frame(props: object) =
+    style(shell)
+
+    val out = <Page brand="the board" search={<Find/>} nav={<Me/>}
+                    footer={<p>sluice, lath, mortar and pg -- the slate stack, end to end.</p>}>
+        {props.children ?? []}
+    </Page>
+
+    out
+
+// The whole page below the document: the providers, the frame, the routed view and the footer.
 //
 // **This is what both hosts mount.** `server.sl` renders it through `lath`'s string host and puts the
 // markup inside `<div id="app">`; `client.slx` hydrates the same element against that markup.
+//
+// **`Theme` is the outermost thing on the page**, which is what every stylesheet in `mortar` selects
+// a dark page on -- and it reads `?theme` for itself, so nothing about the colour is threaded
+// through as a prop.
 export App(props: object) =
     val nav = props.nav ?? { url: "/", go: null, replace: null }
     val session = { user: props.user ?? null, csrf: props.csrf ?? "" }
-    val theme = props.theme ?? "light"
     val out = <Nav.Provider value={nav}>
-        <Post.Provider value={{ send: props.send ?? null }}>
+        <PostContext.Provider value={{ send: props.send ?? null }}>
             <Session.Provider value={session}>
-                <Theme.Provider value={theme}>
-                    <Board.Provider value={props.data ?? { page: "missing", at: "/" }}>
-                        <div class={"board " + theme}>
-                            <Head/>
-                            <main>{router(routes, nav.url)}</main>
-                            <footer class="board-foot">
-                                <p>sluice, lath and pg -- the slate stack, end to end.</p>
-                            </footer>
-                        </div>
-                    </Board.Provider>
-                </Theme.Provider>
+                <Board.Provider value={props.data ?? { page: "missing", at: "/" }}>
+                    <Theme class="board">
+                        <Frame>{router(routes, nav.url)}</Frame>
+                    </Theme>
+                </Board.Provider>
             </Session.Provider>
-        </Post.Provider>
+        </PostContext.Provider>
     </Nav.Provider>
 
     out

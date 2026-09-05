@@ -19,10 +19,6 @@ unmoved(url: string) = null
 // `user` is `null` for a visitor, which is a page's ordinary case and never a fault.
 export val Session = createContext({ user: null, csrf: "" })
 
-// `"light"` or `"dark"`. It rides in a cookie so that a page rendered by the server already has it and
-// nothing flashes white on the way in.
-export val Theme = createContext("light")
-
 // What the server worked out for this URL: the rows, the counts and the failures of one page. A view
 // reads it with `useContext(Board)` rather than being handed it, so a route's `view` stays the one
 // line the router's own documentation shows.
@@ -46,5 +42,9 @@ export val Nav = createContext({ url: "/", go: unmoved, replace: unmoved })
 // browser posts the form itself and answers with the next page. Where `client.slx` has installed one,
 // the same handler sends the fields, is given the outcome, and the page moves without a reload.
 //
+// **`PostContext` and not `Post`, because `mortar` exports a `Post` component** and both are named
+// in the same files. A context and a component are different kinds of thing and there is no reason
+// for a page to have to remember which `Post` it meant.
+//
 //     send(action, fields)   a promise of { ok, to } or { ok: false, status, detail, mismatch }
-export val Post = createContext({ send: null })
+export val PostContext = createContext({ send: null })
