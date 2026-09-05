@@ -180,7 +180,9 @@ A_PHOTO_IS_AN_IMG_UNDER_UPLOADS_AND_NO_PHOTO_IS_NOTHING()
     val withOne = { page: "thread", thread: thread({ photo: "threads/7/square.svg" }), replies: [] }
     val without = { page: "thread", thread: thread(), replies: [] }
 
-    assert(contains(shown("/threads/7", withOne), "<img src=\"/uploads/threads/7/square.svg\""))
+    // **A page asks for `?display`**, which is the copy this board made to be looked at; the bare
+    // address is the file somebody posted, and `pictureOf` is the one line that knows the difference.
+    assert(contains(shown("/threads/7", withOne), "<img src=\"/uploads/threads/7/square.svg?display\""))
     assert(contains(shown("/threads/7", withOne), "alt=\"Hello from slate\""))
     assert(!contains(shown("/threads/7", without), "<img src=\"/uploads/"))
 
@@ -192,7 +194,7 @@ SOMEBODY_WITH_NO_PICTURE_GETS_THE_FIRST_LETTER_OF_THEIR_NAME()
 
     val pictured = shown("/", listing([thread({ author_avatar: "avatars/2/face.svg" })]))
 
-    assert(contains(pictured, "class=\"m-avatar small\" src=\"/uploads/avatars/2/face.svg\""))
+    assert(contains(pictured, "class=\"m-avatar small\" src=\"/uploads/avatars/2/face.svg?display\""))
 
 // -- the frame ------------------------------------------------------------------------------------------
 

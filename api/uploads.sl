@@ -112,7 +112,7 @@ export typeOf(name: string)
 // `keep(file)` -- one photo on a post; `keepAvatar(file)` -- one picture of a person.
 //
 // Both answer `{ ok: true, value: "<digest>.png" }`, which is the ORIGINAL's name: what goes in the
-// row, what `/uploads/` serves, and what a reader following *view original* gets. Or they answer
+// row, and what `/uploads/<name>` answers byte for byte. Or they answer
 // `{ ok: false, status, detail }`, which the caller turns into the answer it was going to give anyway.
 //
 // **WHAT DIFFERS IS ONLY THE DERIVED COPY, WHICH IS WHAT A PAGE ACTUALLY SHOWS.** A photo's is the
@@ -207,17 +207,21 @@ fitted(img: object, width: integer) -> object
 
 // The centred square of a picture, at exactly `side` across.
 //
-// **It is scaled to COVER the square and then cut, rather than scaled to fit it**, which is what
-// `object-fit: cover` does in the page: scaling a wide photograph into a square would squash the face
-// in it. Scaling first and cutting second is what keeps this cheap -- the cut walks the small picture
-// and never the big one.
+// **It COVERS the square rather than fitting inside it**, which is what `object-fit: cover` does in
+// the page: fitting a wide photograph into a square would squash the face in it, so what is kept is
+// the middle of the picture and the rest is thrown away.
+//
+// **THE CUT COMES FIRST, AND THAT ORDER IS A BOUND RATHER THAN A PREFERENCE.** Scaling to cover and
+// cutting afterwards asks for a picture `side` tall and as wide as the aspect ratio says, which is
+// unbounded in the ratio: a panorama 40,000 by 1,000 is inside `MaxPixels` and scaling it to cover
+// 128 asks for five million pixels a row -- 650 million of them, from a file that passed every limit
+// this board has. Cutting the square out of what was uploaded first can never ask for more than what
+// was uploaded, and the scale that follows walks a picture already smaller than that.
 squared(img: object, side: integer) -> object
     val short = min(img.width, img.height)
-    val wide = max(side, img.width * side / short)
-    val tall = max(side, img.height * side / short)
-    val big = if wide == img.width && tall == img.height then img else resizeImage(img, wide, tall)
+    val box = cut(img, (img.width - short) / 2, (img.height - short) / 2, short)
 
-    cut(big, (wide - side) / 2, (tall - side) / 2, side)
+    if short == side then box else resizeImage(box, side, side)
 
 // A square of `side` pixels out of `img`, with its top left corner at `x, y`.
 cut(img: object, x: integer, y: integer, side: integer) -> object

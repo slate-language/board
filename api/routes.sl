@@ -405,10 +405,10 @@ async photo(req: object) -> object
 // says whether this board ever handed such a name out. So `minted` is the first line, and a name that
 // is not one is a `404` that names nothing back.
 //
-// **`?display` is the copy a page shows and the bare address is what was posted**, which is what a
-// *view original* link follows. Where there is no display copy -- a GIF, or a picture kept by a host
-// with no image library -- the bare file answers for both, so a page asking for one always gets a
-// picture.
+// **`?display` is the copy a page shows and the bare address is what was posted**, byte for byte, so
+// keeping the original is something a reader can actually be given rather than a fact about the disk.
+// Where there is no display copy -- a GIF, or a picture kept by a host with no image library -- the
+// bare file answers for both, so a page asking for one always gets a picture.
 async served(req: object)
     val name = string(req.params.name ?? "")
 

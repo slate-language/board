@@ -8,7 +8,11 @@
 // next.
 
 import { request, response } from sluice
+import { remove } from slate:fs
+import { encodePNG, imageShape, resizeImage } from slate:image
 import { encodeComponent, parseQuery, percentDecode } from slate:url
+
+import { display, Root } from "../api/uploads.sl"
 
 // The status of any answer, envelope or not.
 export status(reply) -> integer = response(reply).status
@@ -178,3 +182,97 @@ export picture(name: string) -> object =
 // A file that is not a picture at all, however it is labelled.
 export program(name: string) -> object =
     { field: "photo", filename: name, type: "image/png", bytes: toBytes("#!/bin/sh\nrm -rf /\n") }
+
+// A real WebP, and near enough the smallest one there is: eight pixels a side, lossy at 80. **It is
+// here as bytes rather than as a call to `encodeWebP`** because what it is for is proving that a
+// WebP is a picture this board takes at all, and that answer must be the same on a host that cannot
+// encode one.
+export val Webp = [82, 73, 70, 70, 104, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 32, 92, 0, 0, 0, 208,
+                   1, 0, 157, 1, 42, 8, 0, 8, 0, 1, 64, 38, 37, 176, 2, 116, 1, 14, 103, 210, 197,
+                   160, 0, 254, 245, 242, 157, 204, 182, 77, 6, 46, 143, 255, 128, 157, 165, 202,
+                   197, 115, 208, 128, 128, 154, 44, 136, 15, 117, 210, 3, 252, 37, 41, 222, 255,
+                   99, 102, 197, 126, 207, 175, 246, 55, 255, 151, 240, 241, 237, 255, 54, 182, 60,
+                   191, 227, 254, 81, 53, 114, 191, 209, 38, 63, 240, 67, 255, 226, 15, 209, 128,
+                   0, 0]
+
+export val WebpName = "j8lD578diPLdc81pHzCJaGtpssOvV7uD4Rb0CrhnKT8.webp"
+
+export webp(name: string) -> object =
+    { field: "photo", filename: name, type: "image/webp", bytes: Webp }
+
+// A real GIF, one white pixel of it. **What a GIF is for here is the format that keeps its original
+// and nothing else**, `readImage` answering the first frame of one and a still of an animation being
+// a picture nobody posted.
+export val Gif = [71, 73, 70, 56, 57, 97, 1, 0, 1, 0, 128, 0, 0, 0, 0, 0, 255, 255, 255, 33, 249, 4,
+                  1, 0, 0, 0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 1, 68, 0, 59]
+
+export val GifName = "7xlVrnV8i5ZsgySDUDMb06MPZYztEfOH-OvwWrM2hik.gif"
+
+export gif(name: string) -> object =
+    { field: "photo", filename: name, type: "image/gif", bytes: Gif }
+
+// **FORTY-FIVE BYTES THAT SAY THEY ARE A HUNDRED AND FORTY-FOUR MILLION PIXELS.** A signature, an
+// `IHDR` claiming 12,000 by 12,000, and the end -- which is a compression bomb in a picture's
+// clothes and walks straight past any limit on the number of bytes uploaded, because the file really
+// is this small. What stops it is `imageShape`, which reads these bytes and decodes none of them.
+export val Bomb = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 46, 224, 0, 0,
+                   46, 224, 8, 2, 0, 0, 0, 222, 39, 27, 166, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96,
+                   130]
+
+export bomb(name: string) -> object =
+    { field: "photo", filename: name, type: "image/png", bytes: Bomb }
+
+// A real PNG of any size at all, built rather than written down: `Png` is 71 bytes because it is one
+// pixel, and a picture wide enough to be scaled down is thousands however it is made.
+//
+// **`slate:image` BUILDS IT, SO ASKING FOR ONE IS ITSELF A DECODE** -- which is why every test that
+// wants one is a test that skips where the library is not. Importing a name a back end does not have
+// is fine; reaching it is what refuses.
+export wide(width: integer, height: integer) -> array
+    val seed = { width: 4, height: 2, channels: 3,
+                 pixels: [220, 40, 40, 40, 220, 40, 40, 40, 220, 240, 240, 40,
+                          40, 220, 220, 220, 40, 220, 20, 20, 20, 250, 250, 250] }
+
+    encodePNG(resizeImage(seed, width, height))
+
+// -- the host, and the disk it wrote on ---------------------------------------------------------------
+
+var decoding = null
+
+// Whether this host can decode a picture at all, asked once by trying.
+//
+// **A slate program has no name for the host it is running on**, so the probe is the call itself:
+// every name in `slate:image` refuses under `slate js`, node having no image support in its standard
+// library and a browser's being asynchronous where these answer on the spot. `api/uploads.sl` asks
+// the same question in the same way, which is why a display copy is something that is there under
+// the interpreter and simply absent under node -- and why a test about one skips rather than fails.
+export decodes() -> boolean
+    if decoding == null
+        var here = true
+
+        try
+            imageShape([])
+        catch e
+            here = false
+
+        decoding = here
+
+    decoding
+
+// A photo a test wrote, taken away again -- so that running a suite twice does what running it once
+// did. **The file is named by its content**, so there is exactly one of them however many tests
+// posted it.
+//
+// **KEEPING ONE PHOTO WRITES UP TO THREE FILES**, and a sweep that forgets two of them leaves a
+// working directory that fills up: the original, the WebP copy a page shows, and the one line beside
+// the original that says which copy is which. `display` is what reads that line, so it is asked
+// before anything is taken away.
+export async swept(name: string)
+    val made = await display(name)
+
+    if made != null then await remove(Root + "/" + made)
+
+    await remove(Root + "/" + name + ".display")
+    await remove(Root + "/" + name)
+
+    null

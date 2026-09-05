@@ -52,13 +52,10 @@ excerpt(body: string) -> string =
 // knowing that.
 //
 // **`?display` asks for the copy this board made to be looked at** -- a WebP at the width of the
-// column, or the square an avatar is drawn in -- where the bare address is the file somebody posted,
-// which is what a *view original* link follows. A picture with no display copy answers the same
-// bytes at both, so nothing here has to know which kind it is holding.
+// column, or the square an avatar is drawn in -- where the bare address is the file somebody posted.
+// A picture with no display copy answers the same bytes at both, so nothing here has to know which
+// kind it is holding.
 export pictureOf(file) = if file == null then null else "/uploads/" + string(file) + "?display"
-
-// Where the picture somebody actually posted is, which is the same address without the question.
-export originalOf(file) = if file == null then null else "/uploads/" + string(file)
 
 // -- forms ------------------------------------------------------------------------------------------
 
