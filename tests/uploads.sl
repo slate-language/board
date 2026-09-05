@@ -1,103 +1,119 @@
 // A photo on its way to the disk.
 //
-// **The name a client sent is text a stranger wrote**, so what these are about is that the file that
-// ends up on the disk is named by this program and lands where this program meant it to.
+// **What these are about is that nothing a stranger wrote decides anything.** The kind is read off
+// the first bytes and never off the header, and the name is the digest of the content and never the
+// one a client sent.
+//
+// **The multipart body itself is `sluice`'s to read and `sluice`'s to test.** Its `multipart` guard
+// parses `req.bytes` as of 0.4.0, refuses a body over `maxBytes` with a `413` and a part its
+// `accept` predicate turns down with a `415`; what this board owns is the predicate, the naming and
+// the disk. `tests/routes.sl` is where the two meet, over a real multipart body.
 //
 // They write under `uploads/`, which is where the running board writes too, and take what they wrote
 // away again -- so running them twice does what running them once did.
 
-import { exists, readFile, remove, rmdir } from slate:fs
+import { exists, remove } from slate:fs
 
-import { keep, pick, safeName, Root } from "../api/uploads.sl"
-import { picture, Svg } from "./support.sl"
+import { keep, kindOf, nameOf, pick, stored, typeOf, Root } from "../api/uploads.sl"
+import { picture, program, Png, PngName } from "./support.sl"
 
-// A request as `multipart` would have left it.
+// A request as `sluice`'s `multipart` guard would have left it.
 carrying(files: array) -> object = { form: { fields: {}, files: files } }
 
-// What a test wrote, taken away again.
-async swept(what: string, id: integer, name: string)
-    await remove(Root + "/" + what + "/" + string(id) + "/" + name)
-    await rmdir(Root + "/" + what + "/" + string(id))
-    await rmdir(Root + "/" + what)
-
-// -- the name ---------------------------------------------------------------------------------------
+// -- what kind of thing it is ------------------------------------------------------------------------
 
 @test
-A_NAME_IS_LETTERS_DIGITS_AND_THREE_MARKS_AND_EVERYTHING_ELSE_IS_A_DASH()
-    assertEq(safeName("square.svg"), "square.svg")
-    assertEq(safeName("my photo (1).png"), "my-photo--1-.png")
-    assertEq(safeName("a/b\\c.png"), "a-b-c.png")
+THE_FOUR_FORMATS_A_BROWSER_SHOWS_ARE_READ_OFF_THEIR_FIRST_BYTES()
+    assertEq(kindOf(Png).type, "image/png")
+    assertEq(kindOf(Png).extension, "png")
+    assertEq(kindOf([255, 216, 255, 224, 0, 16]).type, "image/jpeg")
+    assertEq(kindOf(toBytes("GIF89a") ).type, "image/gif")
+
+    // **A WebP says what it is after its own size**, a RIFF container naming its kind at byte eight.
+    assertEq(kindOf(concat(toBytes("RIFF"), concat([36, 0, 0, 0], toBytes("WEBP")))).type, "image/webp")
 
 @test
-A_NAME_CANNOT_CLIMB_OUT_OF_WHERE_IT_IS_PUT()
-    // **Taking the whole class away rather than looking for the ones already known**: a slash, a
-    // backslash, a `..`, a newline and a null are one rule here.
-    assertEq(safeName("../../etc/passwd"), "etc-passwd")
-    assertEq(safeName("..\\..\\windows\\system32"), "windows-system32")
-    assertEq(safeName("....//....//x.png"), "x.png")
+ANYTHING_ELSE_IS_NOT_A_PICTURE_HOWEVER_IT_IS_LABELLED()
+    assertEq(kindOf(toBytes("#!/bin/sh\nrm -rf /\n")), null)
+    assertEq(kindOf([]), null)
+    assertEq(kindOf([137, 80]), null)
+
+    // **An SVG is a real image and is deliberately not taken**: it is a document with script in it,
+    // and a board serving one from its own origin would be serving somebody else's JavaScript.
+    assertEq(kindOf(toBytes("<svg xmlns=\"http://www.w3.org/2000/svg\"/>")), null)
 
 @test
-A_NAME_THAT_IS_NOTHING_LEFT_IS_STILL_A_NAME()
-    assertEq(safeName(""), "photo")
-    assertEq(safeName("..."), "photo")
-    assertEq(safeName("   "), "photo")
+A_STORED_NAME_SAYS_WHAT_IT_IS_AND_ANYTHING_ELSE_SAYS_NOTHING()
+    assertEq(typeOf(PngName), "image/png")
+    assertEq(typeOf("x.webp"), "image/webp")
+    assertEq(typeOf("x.exe"), null)
+    assertEq(typeOf(""), null)
+
+// -- what it is called --------------------------------------------------------------------------------
 
 @test
-A_NAME_IS_BOUNDED_BECAUSE_A_FILESYSTEM_IS()
-    assertEq(len(safeName(repeat("a", 300) + ".png")), 80)
+A_PHOTO_IS_NAMED_BY_ITS_OWN_CONTENT()
+    assertEq(nameOf(Png, "png"), PngName)
 
-// -- what a form sent --------------------------------------------------------------------------------
+    // The same bytes are the same name, and one byte different is a different one.
+    assertEq(nameOf(Png, "png"), nameOf(concat(Png, []), "png"))
+    assert(nameOf(Png, "png") != nameOf(concat(Png, [0]), "png"))
+
+// -- what a form sent -----------------------------------------------------------------------------------
 
 @test
 A_FILE_INPUT_SOMEBODY_LEFT_ALONE_IS_NOT_A_PHOTO()
-    // **A file input a person did not touch still posts a part**, with an empty filename and no
-    // content, so "there is no photo" is a thing to test for rather than an absent member.
-    assertEq(pick(carrying([{ field: "photo", filename: "", type: "", content: "" }]), "photo"), null)
+    // **A file input a person did not touch still posts a part**, with an empty filename and nothing
+    // in it, so "there is no photo" is a thing to test for rather than an absent member.
+    assertEq(pick(carrying([{ field: "photo", filename: "", type: "", bytes: [] }]), "photo"), null)
     assertEq(pick(carrying([]), "photo"), null)
     assertEq(pick({}, "photo"), null)
 
 @test
 A_FILE_IS_FOUND_BY_THE_FIELD_IT_WAS_SENT_UNDER()
-    val two = carrying([{ field: "other", filename: "a.svg", type: "image/svg+xml", content: "x" },
-                        picture("b.svg")])
+    val two = carrying([{ field: "other", filename: "a.png", type: "image/png", bytes: Png },
+                        picture("b.png")])
 
-    assertEq(pick(two, "photo").filename, "b.svg")
+    assertEq(pick(two, "photo").filename, "b.png")
 
 // -- the disk ------------------------------------------------------------------------------------------
 
 @test
-async A_PHOTO_IS_WRITTEN_UNDER_THE_POST_THAT_OWNS_IT()
-    val put = await keep("threads", 4242, picture("square.svg"))
+async A_PHOTO_IS_WRITTEN_UNDER_ITS_OWN_NAME_AND_COMES_BACK_THE_SAME()
+    val put = await keep(picture("square.png"))
 
     assert(put.ok, "the write worked")
-    assertEq(put.value, "threads/4242/square.svg")
+    assertEq(put.value, PngName)
 
-    val back = await readFile(Root + "/" + put.value)
+    val back = await stored(PngName)
 
     assert(back.ok)
-    assertEq(back.value, Svg)
+    assertEq(back.value.type, "image/png")
+    assertEq(back.value.bytes, Png)
 
-    await swept("threads", 4242, "square.svg")
-
-    assertEq(await exists(Root + "/threads/4242"), false)
+    await remove(Root + "/" + PngName)
 
 @test
 async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_REFUSED_BEFORE_ANYTHING_IS_WRITTEN()
-    val put = await keep("threads", 4243,
-        { field: "photo", filename: "run.sh", type: "text/x-shellscript", content: "rm -rf /" })
+    val put = await keep(program("innocent.png"))
 
     assert(!put.ok)
     assertEq(put.status, 415)
-    assertEq(await exists(Root + "/threads/4243"), false)
+    assertEq(await exists(Root + "/" + nameOf(program("x").bytes, "png")), false)
 
 @test
-async THE_TYPE_IS_WHAT_THE_CLIENT_CLAIMED_AND_IS_WORTH_EXACTLY_THAT()
-    // **A real board sniffs the first bytes as well** -- the magic number of a PNG, a JPEG, a GIF -- and
-    // that needs a body this server does not yet hand over as bytes. The header is the check that can
-    // be made today, and it is stated as such rather than passed off as more than it is.
-    val lying = await keep("threads", 4244,
-        { field: "photo", filename: "notreally.png", type: "image/png", content: "this is not a PNG" })
+async A_NAME_THIS_PROGRAM_DID_NOT_MINT_IS_REFUSED_BEFORE_THE_DISK_IS_TOUCHED()
+    // **A digest, a dot and one of four extensions is a name with no slash in it and no room for
+    // one**, so a path is not something a request can write.
+    assert(!(await stored("../../etc/passwd")).ok)
+    assert(!(await stored("../" + PngName)).ok)
+    assert(!(await stored("short.png")).ok)
+    assert(!(await stored(PngName + ".exe")).ok)
 
-    assert(lying.ok, "a claimed type is taken at its word")
+@test
+async A_PHOTO_THAT_IS_NOT_THERE_IS_AN_ANSWER_AND_NOT_A_FAULT()
+    // A name shaped exactly as one this board hands out, for a picture nobody ever posted.
+    val got = await stored(nameOf(toBytes("a photograph nobody took"), "png"))
 
-    await swept("threads", 4244, "notreally.png")
+    assert(!got.ok)
+    assert(contains(got.error, "uploads"))

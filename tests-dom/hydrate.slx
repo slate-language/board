@@ -1,0 +1,188 @@
+// The board's pages, adopted by a real document.
+//
+// **The measurement is jsdom's own `MutationObserver` and nothing else would do.** Counting what
+// `lath` asked the host to do would only say that `lath` believes it touched nothing; an observer is
+// the browser's answer, and it sees a write the framework did not know it was making -- an attribute
+// set to the value it already held, a text node rewritten with the same text.
+//
+// **The markup comes from the string host the server uses**, which is what makes the whitespace
+// question answer itself: this is the page a browser is really sent.
+//
+// ## THREE OF THESE ARE SKIPPED, AND WHAT THEY ARE WAITING FOR IS `lath` AND NOT THIS BOARD
+//
+// **This board's pages cannot be hydrated on `lath` 0.4.0**, and every reduction is in
+// `tests-dom/framework.slx` beside this file -- lath and nothing else in each of them. Two of the
+// four stop hydration dead, because the markup a server writes cannot be walked back:
+//
+// - **Two text children in a row come back as one text node.** `<h2>{len(rows)} replies</h2>` is two
+//   children in the tree and `2 replies` in the markup, and the browser's parser has no way to know
+//   there was a seam. React writes a `<!-- -->` between them for exactly this reason.
+// - **A text child that is the empty string vanishes.** `<textarea>{value ?? ""}</textarea>` writes
+//   `<textarea></textarea>`, and the tree then wants a text node the page does not have.
+//
+// The other two are mutations rather than faults, and this file's `A_HYDRATED_BOARD_MAKES_NO_MUTATIONS`
+// is what sees them: `value` is written as a property with no comparison first (one record per hidden
+// field, and a field somebody is typing in would be reset), and a numeric attribute -- `rows={5}` --
+// is compared against the page's `"5"`, disagrees, and is written again.
+//
+// **Nothing here is written around them.** `{n} replies` is the most ordinary thing a page says, and a
+// board that spelled it `{string(n) + " replies"}` to get past a framework defect would be teaching
+// the workaround to everybody who read it. The skips say what is owed; the reductions say it in
+// fourteen lines; and the day `lath` answers them, the reason comes off and these run.
+
+import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
+import { domHost } from lath/dom
+
+import { App } from "../app/pages.slx"
+import { at, click, mutations, prevented, shown } from "./probe.slx"
+
+val Ada = { id: 1, name: "ada", role: "admin", avatar: null, made: 1756900000 }
+
+thread() -> object =
+    { id: 7, title: "Hello from slate", body: "a first post", photo: null, replies: 2, author: 1,
+      author_name: "ada", author_avatar: null, made: 1756900100, active: 1756900300,
+      tags: ["slate", "lath"] }
+
+reply(id: integer, said: string) -> object =
+    { id: id, thread: 7, body: said, photo: null, author: 1, author_name: "ada",
+      author_avatar: null, made: 1756900300 }
+
+// **Every shape hydration has to walk, in one page**: attributes, text, nested elements, a keyed list
+// built from data, components with contexts above them, forms, and a fragment in the header.
+val Data = { page: "thread", thread: thread(), replies: [reply(1, "first"), reply(2, "second")] }
+
+var sent = []
+
+// What the page's own program does instead of letting the browser post a form.
+async sending(action: string, fields: object) -> object
+    push(sent, { action: action, fields: fields })
+
+    { ok: true }
+
+Page(props: object) =
+    val out = <App nav={{ url: "/threads/7", go: null, replace: null }} data={Data} user={Ada}
+                   csrf="a-token" theme="light" send={sending}/>
+
+    out
+
+// What the server would have sent.
+markup() -> string = html(mount(Page({}), stringHost()))
+
+fell(f) -> string
+    var said = ""
+
+    try
+        f()
+    catch e
+        said = e.message
+
+    said
+
+// What all four of the framework's defects are waiting on, said once.
+val Owed = "lath 0.4.0 cannot hydrate this page: see tests-dom/framework.slx"
+
+@test
+async A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL()
+    skip(Owed)
+
+    val was = markup()
+
+    at(was)
+
+    // The records for planting the markup are the harness's own; the measurement starts after them.
+    await sleep(1)
+
+    val before = mutations()
+
+    hydrate(<Page/>, domHost("#app"))
+
+    await sleep(1)
+
+    assertEq(mutations() - before, 0)
+
+    // And what is on the page is still exactly what was sent, character for character.
+    assertEq(shown(), "<div id=\"app\">" + was + "</div>")
+
+@test
+async A_MOUNTED_RENDER_INTO_THE_SAME_MARKUP_RECORDS_PLENTY()
+    // **The control**, and it is the way a measurement of "nothing happened" fails: without it the
+    // zero above could be zero because the observer was watching the wrong thing.
+    at(markup())
+
+    await sleep(1)
+
+    val before = mutations()
+
+    mount(<Page/>, domHost("#app"))
+
+    await sleep(1)
+
+    assert(mutations() - before > 0)
+
+@test
+async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
+    skip(Owed)
+
+    // **This is what hydration is FOR.** The markup a server sent is already the page; what it does
+    // not have is a single event listener, and the tree that was walked is what installs them.
+    at(markup())
+
+    hydrate(<Page/>, domHost("#app"))
+
+    sent = []
+
+    click("form.out", "submit")
+
+    await sleep(1)
+
+    assertEq(len(sent), 1)
+    assertEq(sent[0].action, "/signout")
+    assertEq(sent[0].fields._csrf, "a-token")
+    assertEq(sent[0].fields.back, "/threads/7")
+
+    // **`preventDefault` is what keeps the browser from posting the form as well**, and it is only
+    // called where a sender was installed -- which is what makes the plain post the fallback rather
+    // than a second code path.
+    assert(prevented(), "the browser was told not to post it")
+
+@test
+async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
+    skip(Owed)
+
+    // **The fallback is not a fallback at all**: a submit handler that finds no sender does not call
+    // `prevent`, so the browser posts the form itself and the server answers with the next page.
+    Plain(props: object) =
+        val out = <App nav={{ url: "/threads/7", go: null, replace: null }} data={Data}
+                    user={Ada} csrf="a-token" theme="light" send={null}/>
+
+        out
+
+    at(html(mount(Plain({}), stringHost())))
+
+    hydrate(<Plain/>, domHost("#app"))
+
+    click("form.out", "submit")
+
+    await sleep(1)
+
+    assert(!prevented(), "the browser posts it, exactly as it would with no script on the page")
+
+@test
+MARKUP_THAT_DOES_NOT_MATCH_IS_A_FAULT_NAMING_THE_PATH_AND_BOTH_SIDES()
+    // **There is no falling back to a client render**, which is the decision that makes hydration
+    // worth having: a page that quietly rebuilt what it could not adopt would hide a server and a
+    // client that disagree -- the one defect hydration exists to expose -- behind a page that looks
+    // right.
+    //
+    // **What is bent is the HEADER and not the thread**, and that is not arbitrary: the thread view
+    // stands inside a `Boundary`, which CATCHES a mismatch under it the way it catches any other
+    // fault -- and then renders its fallback into markup that is not the fallback's, so what escapes
+    // names the fallback's own first node instead of the disagreement. The header is above every
+    // boundary on the page, so a mismatch there is the one this test means to describe.
+    at(markup().replace("<a class=\"brand\"", "<b class=\"brand\""))
+
+    val said = fell(() -> hydrate(<Page/>, domHost("#app")))
+
+    assert(contains(said, "the page does not match what was rendered"))
+    assert(contains(said, "wants <a>"))
+    assert(contains(said, "has <b>"))

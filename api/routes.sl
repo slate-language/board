@@ -14,8 +14,8 @@ import { api, body, csrf, hub, json, lastEventId, logger, problem, rateLimit, re
 import { files, setCookie } from slate:http
 
 import { answered, backTo, moved, themeOf, wantsJson, whoIs } from "./render.sl"
-import { formCsrf, given, withCookie } from "./forms.sl"
-import { Root, keep, pick } from "./uploads.sl"
+import { formCsrf, given, titleFor, withCookie } from "./forms.sl"
+import { keep, kindOf, pick, stored } from "./uploads.sl"
 
 // -- what a client may send ------------------------------------------------------------------------
 //
@@ -62,6 +62,11 @@ answer(f: Failure) = f match
 // the program. Anything a client says that is not one of these is the first.
 val Sorts = ["newest", "active", "busiest"]
 
+// How long a photo may be kept. **A year and `immutable`**, which is what a content-addressed name
+// earns: a browser that has the file never asks about it again, and a photo that changed would be a
+// different address.
+val Forever = "max-age=31536000, immutable"
+
 sortOf(said) -> string
     val name = string(said ?? "")
 
@@ -72,14 +77,19 @@ sortOf(said) -> string
 // `application(store, sessions, options)` -- the whole board, over whichever store it was handed.
 //
 // `options` takes `secret`, the key a session cookie is signed with; `sink`, where `logger` sends its
-// record; `feed`, the event hub; `postLimit`, how many writes a minute one client may make; and
-// `photoLimit`, how many bytes a photo may be.
+// record; `feed`, the event hub; `postLimit`, how many writes a minute one client may make;
+// `photoLimit`, how many bytes a photo may be; and `deadline`, how long a request may take.
 export application(store: object, sessions: object, options: object = {}) -> object
     val secret = options.secret ?? "a board that made its own secret up"
     val sink = options.sink ?? print
     val feed = options.feed ?? hub({ replay: 64 })
     val writes = options.postLimit ?? 10
     val photos = options.photoLimit ?? 262144
+
+    // **A deadline is an option because it is the one operational number a test has to be able to
+    // move.** Five seconds is a page nobody is waiting for any more; five milliseconds is what a
+    // suite can prove the refusal with, and neither is a number to sleep through.
+    val deadline = options.deadline ?? 5000
     val app = api()
 
     app.failures(Failure, answer)
@@ -87,18 +97,25 @@ export application(store: object, sessions: object, options: object = {}) -> obj
     // **The operational guards go outside the ones about an endpoint**, which is what reading in
     // request order means: a request is named, then logged, then bounded, then counted, and only then
     // is who is asking anybody's business.
-    val common = [requestId({}), logger(sink), timeout(5000, {})]
+    val common = [requestId({}), logger(sink), timeout(deadline, {})]
     val known = session(secret, { store: sessions, maxAge: 86400 })
 
-    // Reading. **300 a minute** is a person clicking about, and the key is what a proxy said -- so a
-    // server with nothing in front of it counts every direct client under one name, which is a global
-    // limit rather than a per-client one. `key` is the option that fixes that behind a real proxy.
+    // Reading. **300 a minute** is a person clicking about, and as of `sluice` 0.4.0 the key is the
+    // address that connected -- `req.address` -- rather than a header. **`trustProxy` is deliberately
+    // not set here**: a board with nothing in front of it must not take `x-forwarded-for` at its
+    // word, that header being a value anybody can write and therefore a limit anybody can walk round.
+    // Behind a real proxy this becomes `rateLimit({ ..., trustProxy: true })` and nothing else.
     val browsing = stack(concat(common, [rateLimit({ limit: 300, window: 60000 }), known, formCsrf({})]))
 
     // Writing. The body is parsed, the token is checked, and only then does a handler run.
+    //
+    // **`accept` is where the board says what a photo may be**, and it looks at the BYTES: a `.png`
+    // may claim `text/plain` and a shell script may claim `image/png`, so the four magic numbers
+    // decide and the header decides nothing. A file it refuses is a `415` naming the field and the
+    // filename, from `sluice` and before this application's handler runs at all.
     posted(shape: shape) = stack(concat(common, [rateLimit({ limit: writes, window: 60000 }),
                                                  known,
-                                                 given(shape, { limit: photos }),
+                                                 given(shape, { maxBytes: photos, accept: picture }),
                                                  formCsrf({})]))
 
     // The JSON API, which is `sluice`'s own `body` and `csrf` -- a client library can set a header and
@@ -149,7 +166,11 @@ export application(store: object, sessions: object, options: object = {}) -> obj
     // -- what is on the disk ---------------------------------------------------------------------------
 
     app.get("/assets/*rest", files("./public", { cacheControl: "max-age=300" }))
-    app.get("/uploads/*rest", files(Root, { cacheControl: "max-age=86400" }))
+
+    // **A photo is answered by this program and not by `files(root)`**, because a photo's name is the
+    // digest of its content: nothing at that address can ever change, so the answer is `immutable`
+    // and the `ETag` is the name -- and what is on the disk is not the bytes (see `api/uploads.sl`).
+    app.get("/uploads/:name", (req) -> served(req))
 
     // **A route convention rather than a guard**: the thing asking is a load balancer and not a reader,
     // so it runs under nothing -- no session, no log line and no rate limit -- and what it asks is a
@@ -315,7 +336,7 @@ async started(store: object, req: object)
     if !made.ok then return Unavailable(made.error)
 
     val thread = made.value
-    val kept = await photo("threads", thread.id, req)
+    val kept = await photo(req)
 
     if !kept.ok then return refused(req, kept.status, kept.detail, "compose")
 
@@ -344,7 +365,7 @@ async replied(store: object, feed: object, req: object)
     if !made.ok then return Unavailable(made.error)
 
     var reply = made.value
-    val kept = await photo("replies", reply.id, req)
+    val kept = await photo(req)
 
     if !kept.ok then return refused(req, kept.status, kept.detail, "thread")
 
@@ -362,13 +383,42 @@ async replied(store: object, feed: object, req: object)
 
     moved(req, "/threads/" + string(id))
 
+// Whether an uploaded file is a picture this board will keep.
+//
+// **It is given the bytes and reads the first of them.** An empty part is what a file input somebody
+// left alone posts, and it is not a refusal -- there is simply no photo, which every handler here
+// already tests for.
+picture(file: object) -> boolean
+    if len(file.bytes ?? []) == 0 then return true
+
+    kindOf(file.bytes) != null
+
 // The photo a form sent, kept -- or nothing at all, which is the ordinary case.
-async photo(what: string, id: integer, req: object) -> object
+async photo(req: object) -> object
     val file = pick(req, "photo")
 
     if file == null then return { ok: true, value: null }
 
-    await keep(what, id, file)
+    await keep(file)
+
+// One photo, answered.
+//
+// **The name IS the content**, so the answer may be cached for ever and a client that has it already
+// is told so rather than sent it again: an `ETag` that is the file's own digest cannot be stale.
+async served(req: object)
+    val name = req.params.name
+    val tag = "\"" + name + "\""
+
+    if (req.headers["if-none-match"] ?? "") == tag
+        return { status: 304, headers: { ETag: tag, "Cache-Control": Forever }, body: "" }
+
+    val got = await stored(name)
+
+    if !got.ok then return problem(404, "Not Found", "there is no photo called " + name)
+
+    { status: 200,
+      headers: { "Content-Type": got.value.type, "Cache-Control": Forever, ETag: tag },
+      body: got.value.bytes }
 
 // `slate, Sluice,  ,slate` as `["slate", "sluice"]`.
 //
@@ -433,7 +483,7 @@ async pictured(store: object, req: object)
 
     if you == null then return NotSignedIn("change your picture")
 
-    val kept = await photo("avatars", you.id, req)
+    val kept = await photo(req)
 
     if !kept.ok then return refused(req, kept.status, kept.detail, "profile")
     if kept.value == null then return refused(req, 400, "no picture was sent", "profile")
@@ -547,16 +597,6 @@ refused(req: object, status: integer, detail: string, page: string)
     if wantsJson(req) then return problem(status, titleFor(status), detail, { instance: req.path })
 
     answered(req, { page: page, detail: detail }, status)
-
-titleFor(status: integer) -> string
-    if status == 400 then return "Bad Request"
-    if status == 401 then return "Unauthorized"
-    if status == 403 then return "Forbidden"
-    if status == 409 then return "Conflict"
-    if status == 413 then return "Content Too Large"
-    if status == 415 then return "Unsupported Media Type"
-
-    "Error"
 
 // **A health check answers the REASONS it is unwell**, and an empty answer means it is well. A boolean
 // would make a failing check a page nobody can act on: whoever is looking at it already knows

@@ -14,8 +14,7 @@
 // package's own public surface -- `guardOf`, `problem`, `response` -- and would be four options and
 // no new ideas there.
 
-import { guardOf, problem, response } from sluice
-import { multipart } from sluice
+import { guardOf, multipart, problem, response } from sluice
 import { parseForm, setCookie } from slate:http
 import { randomBytes, timingSafeEqual } from slate:crypto
 import { base64urlEncode } from slate:url
@@ -36,7 +35,8 @@ val TokenField = "_csrf"
 // does not fit rather than stopping at the first, so somebody filling in a form is told about all of
 // it at once -- which is `sluice`'s own arrangement, kept.
 //
-// `options` are `multipart`'s: `limit` in bytes, answered with `413`.
+// `options` are `multipart`'s: `maxBytes`, answered with `413`, and `accept`, a predicate on one
+// uploaded file answered with a `415` naming the field, the filename and the type it claimed.
 export given(shape: shape, options: object = {}, handler = null) =
     val g = guardOf("given(" + shape.name() + ")", (h) -> dispatch(shape, options, h))
 
@@ -46,6 +46,9 @@ dispatch(shape: shape, options: object, h)
     // **The multipart guard is built ONCE and not per request**, which is what `stack` does with
     // every other guard and is the reason a route composes when it is added rather than when it is
     // called.
+    //
+    // **It reads `req.bytes` as of `sluice` 0.4.0**, which is what makes a photograph possible at
+    // all: a multipart body carrying a `.png` is not text, and 0.3.0 read the body as text.
     val viaFiles = multipart(options, (req) -> lifted(shape, h, req, req.form.fields))
 
     async inner(req)
@@ -87,6 +90,21 @@ lifted(shape: shape, h, req: object, values)
             { instance: req.path, mismatch: bad })
 
     h(req with { body: fields, token: token })
+
+// What a status is called. **RFC 9457 wants a title beside the detail**, and the title is about the
+// status where the detail is about this request -- so it is a table and not a sentence somebody wrote
+// at each of the places that answers one.
+export titleFor(status: integer) -> string
+    if status == 400 then return "Bad Request"
+    if status == 401 then return "Unauthorized"
+    if status == 403 then return "Forbidden"
+    if status == 404 then return "Not Found"
+    if status == 409 then return "Conflict"
+    if status == 413 then return "Content Too Large"
+    if status == 415 then return "Unsupported Media Type"
+    if status == 500 then return "Internal Server Error"
+
+    "Error"
 
 // -- the token --------------------------------------------------------------------------------------
 

@@ -9,12 +9,15 @@
 // SQL, and `tests/postgres.sl` is that half.
 
 import { response } from sluice
+import { remove } from slate:fs
+import { files } from slate:http
 
 import { application } from "../api/routes.sl"
 import { sessionStore } from "../api/sessions.sl"
+import { nameOf, Root } from "../api/uploads.sl"
 import { board } from "./store.sl"
-import { client, doc, header, multipart, picture, shows, status, text, urlencoded, Edge,
-    Svg } from "./support.sl"
+import { client, doc, header, picture, program, shows, status, text, Png,
+    PngName } from "./support.sl"
 
 val Secret = "a key this suite made up"
 
@@ -30,13 +33,35 @@ seed() -> object =
 
 // The board, and something that drives it like a browser.
 made(options: object = {}) -> object
-    val store = board(seed())
+    val store = options.store ?? board(seed())
     val sessions = sessionStore({})
     val app = application(store, sessions, options with { secret: Secret, sink: quiet })
 
     { store: store, sessions: sessions, app: app, at: client(app) }
 
 quiet(r: object) = null
+
+// A photo a test wrote, taken away again -- so that running this suite twice does what running it
+// once did. **The file is named by its content**, so there is exactly one of them however many
+// tests posted it.
+async sweptOf(name: string)
+    await remove(Root + "/" + name)
+
+    null
+
+// The name of a picture nobody ever posted, shaped exactly as one this board hands out.
+never() -> string = nameOf(toBytes("a photograph nobody took"), "png")
+
+// The same store, always answering and always too late. **Fifty milliseconds against a five
+// millisecond deadline**, which is a bound this suite can prove rather than a clock it sleeps
+// through.
+slow(store: object) -> object
+    async late(q: object)
+        await sleep(50)
+
+        await store.threads(q)
+
+    store with { threads: late }
 
 // Signed in as somebody the seed knows, with the CSRF cookie already issued.
 async signedIn(it: object, name: string, password: string)
@@ -368,44 +393,105 @@ async A_PHOTO_IS_KEPT_UNDER_THE_POST_AND_SHOWN_ON_IT()
     await signedIn(it, "grace", "alsosecret")
 
     val made_ = await it.at.upload("/threads",
-        { title: "a picture", body: "of a square", tags: "art" }, picture("square.svg"))
+        { title: "a picture", body: "of a square", tags: "art" }, picture("square.png"))
 
     assertEq(status(made_), 303)
 
     val said = doc(await it.at.asJson("/threads/3"))
 
-    assertEq(said.data.thread.photo, "threads/3/square.svg")
+    assertEq(said.data.thread.photo, PngName)
 
     val page = await it.at.get("/threads/3")
 
-    assert(shows(page, "src=\"/uploads/threads/3/square.svg\""), "and the page shows it")
+    assert(shows(page, "src=\"/uploads/" + PngName + "\""), "and the page shows it")
+
+    await sweptOf(PngName)
 
 @test
-async A_FILENAME_IS_ONE_THIS_PROGRAM_MADE_AND_NOT_ONE_A_CLIENT_SENT()
+async A_PHOTO_IS_NAMED_BY_ITS_CONTENT_AND_NEVER_BY_WHAT_A_CLIENT_SENT()
     val it = made()
 
     await signedIn(it, "grace", "alsosecret")
 
+    // **The name a client sent never reaches the filesystem at all.** `../../etc/passwd` is the
+    // shape every file server has been caught by, and here it is not defended against: the file is
+    // named by the digest of its own bytes, so what a client wrote is read and then dropped.
     await it.at.upload("/threads", { title: "climbing out", body: "or trying to", tags: "" },
         picture("../../etc/passwd"))
 
     val said = doc(await it.at.asJson("/threads/3"))
 
-    // **Everything that is not a letter, a digit, a dot, a dash or an underscore becomes a dash**,
-    // which takes the whole class of path mistakes away rather than looking for the ones already
-    // known -- and the leading dots go with it.
-    assertEq(said.data.thread.photo, "threads/3/etc-passwd")
+    assertEq(said.data.thread.photo, PngName)
+
+    // And the same picture posted twice is one file, which is what a content address means.
+    await it.at.upload("/threads", { title: "again", body: "the same picture", tags: "" },
+        picture("square.png"))
+
+    val again = doc(await it.at.asJson("/threads/4"))
+
+    assertEq(again.data.thread.photo, PngName)
+
+    await sweptOf(PngName)
 
 @test
-async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_A_415()
+async A_PHOTO_IS_SERVED_BACK_AS_THE_BYTES_THAT_WERE_POSTED()
     val it = made()
 
     await signedIn(it, "grace", "alsosecret")
 
+    await it.at.upload("/threads", { title: "a picture", body: "of a square", tags: "" },
+        picture("square.png"))
+
+    val got = await it.at.get("/uploads/" + PngName)
+
+    assertEq(status(got), 200)
+    assertEq(header(got, "content-type"), "image/png")
+    assertEq(response(got).body, Png)
+
+    // **The name is the content**, so the answer may be kept for ever and a client that has it is
+    // told so rather than sent it again.
+    assertEq(header(got, "cache-control"), "max-age=31536000, immutable")
+
+    val tag = header(got, "etag")
+    val back = await it.at.sent("GET", "/uploads/" + PngName, { headers: { "if-none-match": tag } })
+
+    assertEq(status(back), 304)
+
+    await sweptOf(PngName)
+
+@test
+async A_NAME_THIS_BOARD_NEVER_HANDED_OUT_IS_A_404_AND_NOT_A_READ()
+    val it = made()
+
+    // Both are 404: one is not a name this board could ever have handed out, and the other is
+    // exactly the shape of one and belongs to a picture nobody posted.
+    assertEq(status(await it.at.get("/uploads/nonsense.png")), 404)
+    assertEq(status(await it.at.get("/uploads/" + never())), 404)
+
+@test
+async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_A_415_WHATEVER_IT_SAYS_IT_IS()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    // **It is labelled `image/png` and it is a shell script**, which is exactly what the header is
+    // worth: the first bytes are what decide.
     val refused = await it.at.upload("/threads", { title: "a program", body: "not a picture", tags: "" },
-        { field: "photo", filename: "run.sh", type: "text/x-shellscript", content: "rm -rf /" })
+        program("innocent.png"))
 
     assertEq(status(refused), 415)
+
+    // **A guard refuses with a problem document and a handler answers a page**, which is the line
+    // this board draws and it is `sluice`'s own: the guard is the same answer for a browser and for
+    // a client library, and what it names is the part it turned down.
+    val said = doc(refused)
+
+    assertEq(said.title, "Unsupported Media Type")
+    assertEq(said.field, "photo")
+    assertEq(said.filename, "innocent.png")
+
+    // And what it CLAIMED to be, which is what makes the refusal readable: it said `image/png`.
+    assertEq(said.type, "image/png")
 
 @test
 async A_PHOTO_OVER_THE_LIMIT_IS_A_413()
@@ -414,9 +500,14 @@ async A_PHOTO_OVER_THE_LIMIT_IS_A_413()
     await signedIn(it, "grace", "alsosecret")
 
     val refused = await it.at.upload("/threads", { title: "too big", body: "much too big", tags: "" },
-        picture("big.svg"))
+        picture("big.png"))
 
     assertEq(status(refused), 413)
+
+    // **The size is checked before anything is parsed**, which is the only order that bounds the
+    // work a stranger can ask for -- and the document says both numbers.
+    assertEq(doc(refused).limit, 64)
+    assert(doc(refused).size > 64)
 
 // -- taking things away -------------------------------------------------------------------------------
 
@@ -517,6 +608,80 @@ async A_DESTINATION_OUT_OF_A_REQUEST_IS_CHECKED_AND_NOT_TRUSTED()
     assertEq(header(away, "location"), "/")
 
 // -- staying up -----------------------------------------------------------------------------------------
+
+@test
+async EVERY_ANSWER_IS_NAMED_AND_AN_ID_A_CLIENT_ALREADY_HAS_IS_KEPT()
+    val it = made()
+
+    // **The id is on the answer and not only in the log**, which is what lets somebody looking at a
+    // page and somebody looking at the log line be talking about the same request.
+    assert(header(await it.at.get("/"), "X-Request-Id") != null, "every answer is named")
+
+    val traced = await it.at.sent("GET", "/", { headers: { "x-request-id": "cafe-1234" } })
+
+    assertEq(header(traced, "X-Request-Id"), "cafe-1234")
+
+@test
+async A_REQUEST_THAT_OUTRUNS_ITS_DEADLINE_IS_ANSWERED_AND_NOT_LEFT_HANGING()
+    // **503 and not 504**, which is RFC 9110's own line: 504 is for a server acting as a gateway,
+    // and a board waiting on its own database is not one.
+    val it = made({ deadline: 5, store: slow(board(seed())) })
+    val late = await it.at.asJson("/")
+
+    assertEq(status(late), 503)
+    assertEq(doc(late).title, "Service Unavailable")
+
+@test
+async A_DRAINING_BOARD_ANSWERS_503_TO_EVERYTHING_ITS_OWN_HEALTH_CHECK_INCLUDED()
+    val it = made()
+
+    assertEq(status(await it.at.get("/health")), 200)
+
+    // **This is what `SIGTERM` does first**: stop taking new requests, then let what is in hand
+    // finish, then let go of the socket. A load balancer reading the health check is told to send
+    // the next request elsewhere, which is the whole point of answering rather than closing.
+    it.app.stop()
+
+    assertEq(status(await it.at.get("/")), 503)
+    assertEq(status(await it.at.get("/health")), 503)
+    assertEq(status(await it.at.post("/signin", { name: "ada", password: "supersecret" })), 503)
+
+// Whether this host can serve a file at all, asked by TRYING rather than by naming a back end.
+//
+// **`slate:http`'s `files(root)` faults under `--js`** -- *"`epochMillis` is not something undefined
+// can do"*, from the `mtime` a `stat` answers, the calendar half of `slate:time` being owed on that
+// back end. A slate program has no name for which host it is running on, deliberately, so the
+// question goes to the thing itself. Reported to the compiler 2026-09-05.
+async canServe() -> boolean
+    val serve = files("./public", {})
+
+    try
+        await serve({ method: "GET", path: "/assets/style.css", params: { rest: "style.css" },
+                      headers: {}, query: {}, cookies: {} })
+
+        return true
+    catch e
+        return false
+
+@test
+async THE_STYLESHEET_IS_SERVED_OFF_THE_DISK_AND_NOTHING_ELSE_IS()
+    if !(await canServe()) then skip("slate:http's files() faults on this host: a stat has no mtime")
+
+    val it = made()
+    val css = await it.at.get("/assets/style.css")
+
+    assertEq(status(css), 200)
+
+    // **A file off the disk arrives as BYTES**, which is what `slate:http`'s `files` answers for
+    // everything it serves -- a stylesheet and a font are read the same way, and only the reader
+    // knows which is text.
+    val body = response(css).body
+    val said = if body is string then body else fromBytes(body).value
+
+    assert(contains(said, ".board"), "the board's own stylesheet")
+
+    // **A files route serves what is under its root and nothing above it.**
+    assertEq(status(await it.at.get("/assets/nothing.css")), 404)
 
 @test
 async THE_HEALTH_CHECK_ASKS_THE_STORE_AND_NOT_A_FLAG_IN_THIS_PROCESS()

@@ -1,0 +1,149 @@
+// What `lath` owes this board, reduced to the smallest program that shows each one.
+//
+// **Nothing here is about the board.** There is no router, no context, no page and no store: every
+// test below is `lath` and a document, and each is the whole of one defect. They are kept here rather
+// than in a scratch file because a probe worth running is worth keeping -- `tests-dom/hydrate.slx`
+// says which of its own tests each of these is holding up, and the day `lath` answers them the
+// `skip` comes off here and there together.
+//
+// **All four are about the same thing said four ways: the markup a server writes has to be walkable
+// back into the tree that wrote it.** Two of them are not -- a seam between two text children and an
+// empty text child both disappear into the markup -- and two of them are written again on the way in
+// when they did not need to be.
+//
+// Found 2026-09-05 writing this board's hydration suite, on lath 0.4.0 and slate 0.0.30.
+
+import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
+import { domHost } from lath/dom
+import { attribute, byId, query, setProperty } from slate:dom
+
+// The page emptied, with markup already inside the container -- which the browser PARSES, and that
+// is the whole point: a tree built out of `createElement` is not the page a server sent.
+into(inside: string) =
+    setProperty(query("body"), "innerHTML", "<div id=\"app\">" + inside + "</div>")
+
+    null
+
+// What hydrating a component against its own server markup says, or nothing where it says nothing.
+fell(P) -> string
+    val was = html(mount(P({}), stringHost()))
+
+    into(was)
+
+    var said = ""
+
+    try
+        hydrate(<P/>, domHost("#app"))
+    catch e
+        said = e.message
+
+    said
+
+count() -> integer =
+    val said = attribute(byId("lath-probe"), "data-mutations")
+
+    if said == null then 0 else integer(number(said))
+
+// How many mutation records the browser recorded while a component was hydrated against its own
+// server markup.
+async records(P) -> integer
+    val was = html(mount(P({}), stringHost()))
+
+    into(was)
+
+    await sleep(1)
+
+    val before = count()
+
+    hydrate(<P/>, domHost("#app"))
+
+    await sleep(1)
+
+    count() - before
+
+// -- what cannot be walked back -----------------------------------------------------------------------
+
+Adjacent(props: object) =
+    val out = <h2>{2} replies</h2>
+
+    out
+
+Empty(props: object) =
+    val out = <p>{""}</p>
+
+    out
+
+One(props: object) =
+    val out = <h2>two replies</h2>
+
+    out
+
+@test
+TWO_TEXT_CHILDREN_IN_A_ROW_COME_BACK_AS_ONE_TEXT_NODE()
+    skip("lath 0.4.0 writes no seam between adjacent text children")
+
+    // `<h2>{2} replies</h2>` is two children in the tree and `<h2>2 replies</h2>` in the markup, and
+    // a parser has no way to know there was a seam. **React writes a `<!-- -->` between them for
+    // exactly this reason**, and reads it back as the boundary it is.
+    //
+    // Today: `at #app > 0 > 0 the tree wants the text "2" and the page has the text "2 replies"`.
+    assertEq(fell(Adjacent), "")
+
+@test
+A_TEXT_CHILD_THAT_IS_THE_EMPTY_STRING_SURVIVES_THE_MARKUP()
+    skip("lath 0.4.0 loses an empty text child between the two hosts")
+
+    // `<p>{""}</p>` writes `<p></p>`, so the tree wants a text node the page has not got. **Either
+    // host may decide it** -- a tree that never makes an empty text node, or markup that says the
+    // node was there -- but the two have to agree.
+    //
+    // Today: `at #app > 0 > 0 the tree wants the text "" and the page has nothing`.
+    assertEq(fell(Empty), "")
+
+@test
+A_TEXT_CHILD_THAT_IS_ONE_STRING_IS_ADOPTED_FINE()
+    // **The control.** Everything above works the moment the tree's text is one child, which is what
+    // says these are about the seams and not about text.
+    assertEq(fell(One), "")
+
+// -- what is written again for nothing -------------------------------------------------------------
+
+Valued(props: object) =
+    val out = <input type="hidden" name="token" value="a-token"/>
+
+    out
+
+Rowed(props: object) =
+    val out = <textarea rows={5}></textarea>
+
+    out
+
+Plain_(props: object) =
+    val out = <p class="said">nothing to do here</p>
+
+    out
+
+@test
+async A_VALUE_ALREADY_ON_THE_PAGE_IS_NOT_WRITTEN_AGAIN()
+    skip("lath 0.4.0 sets value as a property without comparing it first")
+
+    // **`value` is set as a PROPERTY and not an attribute**, which is what keeps a re-render from
+    // freezing a field somebody is typing in -- and the property setter is not guarded by the
+    // comparison the attribute path has. On an `<input>` the property reflects the content
+    // attribute, so an observer records a change to the value it already held; on a field being
+    // typed in, hydration would take what was typed.
+    assertEq(await records(Valued), 0)
+
+@test
+async A_NUMERIC_ATTRIBUTE_IS_COMPARED_AS_THE_TEXT_IT_IS_ON_THE_PAGE()
+    skip("lath 0.4.0 compares rows={5} against the page's \"5\" and rewrites it")
+
+    // An attribute is text, always. `rows={5}` is the ordinary way to write it and the comparison
+    // that decides whether to write it has to say so.
+    assertEq(await records(Rowed), 0)
+
+@test
+async A_PAGE_WITH_NEITHER_ON_IT_RECORDS_NOTHING()
+    // **The control for both**, and it is what says the measurement is of these two and not of
+    // hydration in general: lath adopts this page without touching it.
+    assertEq(await records(Plain_), 0)

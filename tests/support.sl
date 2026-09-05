@@ -54,8 +54,14 @@ export client(app: object) -> object
         val where = if at == null then path else path[0..<at]
         val asked = if at == null then {} else parseQuery(path[at + 1..])
         val query = asked with (options.query ?? {})
-        val reply = response(await app.handle(request(method, where,
-            options with { cookies: jar, query: query })))
+        val built = request(method, where, options with { cookies: jar, query: query })
+
+        // **`request` fills in what a server fills in and knows nothing about `bytes`**, which
+        // arrived on slate 0.0.30 and has not reached `sluice`'s helper yet -- so an upload's body is
+        // put on afterwards. A real server sets both; a body that is not UTF-8 has no `body` at all,
+        // which is exactly the case a photograph is.
+        val req = if has(options, "bytes") then built with { bytes: options.bytes } else built
+        val reply = response(await app.handle(req))
 
         keep(reply)
 
@@ -79,12 +85,11 @@ export client(app: object) -> object
           query: { format: "json" },
           body: toJSON(fields with { _csrf: token() }) })
 
-    // A form carrying a file. **`content` is TEXT**, which is what `slate:http` hands a handler on
-    // slate 0.0.29 -- an SVG is a real image and is UTF-8, and everything after the parser is the same
-    // code a PNG will take.
+    // A form carrying a file. **The body goes as BYTES and there is no text form of it**, which is
+    // what a browser posting a `.png` really sends and what `req.bytes` is for.
     async upload(path: string, fields: object, file: object) = await sent("POST", path,
         { headers: { "content-type": "multipart/form-data; boundary=" + Edge },
-          body: multipart(fields with { _csrf: token() }, file) })
+          bytes: multipart(fields with { _csrf: token() }, file) })
 
     // What the jar is holding, for a test that wants to look.
     cookies() -> object = jar
@@ -129,29 +134,47 @@ export urlencoded(fields: object) -> string
 // asks of one.
 export val Edge = "----boardtest7f3a"
 
-// A `multipart/form-data` body: the text fields, then one file.
+// A `multipart/form-data` body: the text fields, then one file, as BYTES.
 //
-// **The CRLF before a delimiter belongs to the delimiter and not to the part**, which is the off-by-one
-// every multipart writer and reader has to agree about.
-export multipart(fields: object, file) -> string
-    var out = ""
+// **Bytes and not text, because a photograph is not text.** The headers are ASCII and the file is
+// whatever it is, which is the whole reason this body cannot be built as a string -- and the reason
+// `api/multipart.sl` reads `req.bytes`.
+//
+// **The CRLF before a delimiter belongs to the delimiter and not to the part**, which is the
+// off-by-one every multipart writer and reader has to agree about.
+export multipart(fields: object, file) -> array
+    var out = []
 
     for [name, value] in entries(fields)
-        out = out + "--" + Edge + "\r\n"
-        out = out + "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
-        out = out + string(value) + "\r\n"
+        val head = "--" + Edge + "\r\nContent-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
+
+        out = concat(out, toBytes(head + string(value) + "\r\n"))
 
     if file != null
-        out = out + "--" + Edge + "\r\n"
-        out = out + "Content-Disposition: form-data; name=\"" + file.field + "\"; filename=\""
-        out = out + file.filename + "\"\r\n"
-        out = out + "Content-Type: " + file.type + "\r\n\r\n"
-        out = out + file.content + "\r\n"
+        val said = "--" + Edge + "\r\nContent-Disposition: form-data; name=\"" + file.field + "\""
+        val named = said + "; filename=\"" + file.filename + "\"\r\n"
+        val head = named + "Content-Type: " + file.type + "\r\n\r\n"
 
-    out + "--" + Edge + "--\r\n"
+        out = concat(out, toBytes(head))
+        out = concat(out, file.bytes ?? [])
+        out = concat(out, toBytes("\r\n"))
 
-// An image that is text, which is the one kind slate 0.0.29 can carry through a form.
-export val Svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"8\"><rect width=\"8\" height=\"8\"/></svg>"
+    concat(out, toBytes("--" + Edge + "--\r\n"))
+
+// A real PNG, and the smallest one there is: eight bytes that say what it is, a header, one
+// transparent pixel and the end. **A fixture that is really a PNG is the point** -- what a photo is
+// is read off these bytes and never off the `Content-Type` a client wrote.
+export val Png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0,
+                  1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 218, 99, 252,
+                  207, 192, 80, 15, 0, 4, 133, 1, 128, 132, 169, 140, 33, 0, 0, 0, 0, 73, 69, 78, 68,
+                  174, 66, 96, 130]
+
+// What that PNG is called once it is kept: the base64url of its own SHA-256, and then what it is.
+export val PngName = "xBTNDiBN6XT3N1PH4o12OOezaRu4saK6trJbt_7Xznc.png"
 
 export picture(name: string) -> object =
-    { field: "photo", filename: name, type: "image/svg+xml", content: Svg }
+    { field: "photo", filename: name, type: "image/png", bytes: Png }
+
+// A file that is not a picture at all, however it is labelled.
+export program(name: string) -> object =
+    { field: "photo", filename: name, type: "image/png", bytes: toBytes("#!/bin/sh\nrm -rf /\n") }

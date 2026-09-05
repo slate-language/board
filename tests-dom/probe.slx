@@ -1,0 +1,104 @@
+// What a test can ask a real document that `slate:dom` has no name for.
+//
+// **This file and `setup.mjs` beside it are `lath`'s own**, taken as a shape rather than as a
+// dependency -- a package does not publish its tests, and a suite that imported another one's would
+// be pinned to a file that package is free to change. The container is `#app`, which is what this
+// board's shell renders into.
+//
+// **Three things a slate program cannot do, reached through names it can.** `slate:dom` is
+// twenty-eight names and none of them dispatches an event, observes a mutation, or counts what the
+// browser was left to do itself -- and a slate program cannot reach a JavaScript global, a builtin
+// being a parameter of the emitted program rather than a name taken off `globalThis`. So the harness
+// in `setup.mjs` puts each of the three where an ordinary `slate:dom` call finds it: a property
+// whose setter dispatches, and a `<meta>` in the head carrying the counts.
+//
+// **Nothing here fakes anything.** jsdom builds the event, jsdom dispatches it, jsdom's own
+// `MutationObserver` counts what changed. This file is the wire, not the answer.
+
+import { byId, query, markup, nodeText, attribute, setProperty } from slate:dom
+
+// The page emptied, with whatever a server would have sent already inside the container.
+//
+// **`innerHTML` is how markup gets onto a page, and there is no other way from here.** `slate:dom`
+// deliberately has no reader for it and no writer either; `setProperty` is a property assignment on
+// a real element, which is what this is. It is what makes a hydration test possible at all: the
+// markup has to be PARSED by the browser, and a tree built out of `createElement` is not the same
+// page.
+export at(inside: string) =
+    setProperty(query("body"), "innerHTML", "<div id=\"app\">" + inside + "</div>")
+
+    null
+
+// The page emptied, with something else BESIDE the container.
+//
+// **A portal's destination has to be outside the tree the application renders into**, the container's
+// children being what a mount replaces -- so it goes here rather than in `at`.
+export beside(extra: string) =
+    setProperty(query("body"), "innerHTML", "<div id=\"app\"></div>" + extra)
+
+    null
+
+// The container every test renders into.
+export container() = byId("app")
+
+// What the container holds now, as markup.
+export shown() -> string = markup(container())
+
+// The element carrying what the harness measured. It is in the HEAD, so that writing to it is not
+// itself a mutation of the page being watched.
+probe() = byId("lath-probe")
+
+// **`number` and not `integer`, which reads a number out of a string where `integer` converts one
+// that is already a number.** An attribute is text, always.
+count(name: string) -> integer =
+    val said = attribute(probe(), name)
+
+    if said == null then 0 else integer(number(said))
+
+// How many mutation RECORDS the observer has delivered for the page so far.
+//
+// **A running total and not a reading that resets**, so a test takes it before and after and
+// subtracts -- which is the only shape that works when everything shares one document.
+export mutations() -> integer = count("data-mutations")
+
+// How many NODES those records added or removed, plus one for each attribute or text change.
+//
+// **The pair is the measurement.** A hydrated page has to record nothing at all, which the count of
+// records says; a reorder that replaces a whole child list makes ONE record and moves a thousand
+// nodes, which only this says.
+export touched() -> integer = count("data-touched")
+
+// How many clicks the browser was allowed to follow, which is how many the router declined.
+export navigations() -> integer = count("data-navigations")
+
+// Whether the last event dispatched had its default prevented.
+export prevented() -> boolean = attribute(probe(), "data-prevented") == "true"
+
+// An event dispatched on a node -- by the browser, and shaped as a person's would be.
+//
+//     fire(node, "click")
+//     fire(node, "click meta")
+//     fire(node, "click button=1")
+//     fire(node, "keydown key=Enter")
+export fire(node, spec: string) =
+    setProperty(node, "lathEvent", spec)
+
+    null
+
+// The same, on the first node matching a selector.
+export click(selector: string, spec: string = "click") =
+    val node = query(selector)
+
+    if node == null
+        throw "there is nothing matching " + selector + " on the page to click"
+
+    fire(node, spec)
+
+    null
+
+// What an element says, or a sentence saying it is not there -- so that a missing node reads as a
+// value rather than faulting three lines after the mistake.
+export says(id: string) -> string =
+    val node = byId(id)
+
+    if node == null then "<gone>" else nodeText(node)
