@@ -43,21 +43,16 @@ val Theme = "theme"
 // hydrates against has to name the address a person is on, and `/?format=json` is not an address
 // anybody is on.
 //
-// **`theme` IS NORMALISED HERE AND THAT IS THE SERVER'S JOB.** `mortar`'s `Theme` refuses a `?theme`
-// that is neither word -- deliberately, so that a program writing a wrong one is told -- but a query
-// string is something anybody may type, so a value out of a request is not a program's mistake and
-// may not be a `500`. Anything that is not `dark` is dropped, which is also the canonical spelling of
-// light: the default never rides in an address the board rendered.
+// **`theme` IS LEFT EXACTLY AS IT ARRIVED**, and it is `mortar` 0.2.1 that makes that safe: a
+// `?theme` that is neither word is the default there, quietly, because the address is whatever a
+// person typed or a link carried and a fault over a stranger's spelling would be a 500 nobody
+// reading the page could fix. An address the board rewrote would be a second answer to that
+// question, kept in step with `mortar`'s by hand.
 export addressOf(req: object) -> string
     var query = {}
 
     for [name, value] in entries(req.query ?? {})
         if name == Format then continue
-
-        if name == Theme
-            if value == "dark" then query[name] = "dark"
-
-            continue
 
         query[name] = value
 
@@ -76,11 +71,11 @@ export addressOf(req: object) -> string
 //
 // **It is read off the ADDRESS THE PAGE WILL HOLD and not off the request**, which is what makes the
 // `data-theme` on `<html>` and the colour `mortar`'s `Theme` renders in one value rather than two
-// that agree by inspection: `addressOf` has already dropped anything that is not `dark`, and this
-// reads the query back out of it with `lath/router`'s own reader -- the same one `useSearch` hands
-// the component.
+// that agree by inspection: both read the same query string, this one with `lath/router`'s own
+// reader and `Theme` with the `useSearch` built on it.
 //
-// **Anything that is not `dark` is light**, a query string being something anybody may type.
+// **Anything that is not `dark` is light**, a query string being something anybody may type -- which
+// is `mortar`'s own rule for the same value, written here in the one place the document is decided.
 export themeOf(url: string) -> string =
     if (parseSearch(searchOf(url))[Theme] ?? "") == "dark" then "dark" else "light"
 

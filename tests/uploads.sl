@@ -12,10 +12,10 @@
 // They write under `uploads/`, which is where the running board writes too, and take what they wrote
 // away again -- so running them twice does what running them once did.
 
-import { exists, remove } from slate:fs
+import { exists } from slate:fs
 
-import { keep, kindOf, nameOf, pick, stored, typeOf, Root } from "../api/uploads.sl"
-import { picture, program, Png, PngName } from "./support.sl"
+import { display, keep, kindOf, nameOf, pick, stored, typeOf, Root } from "../api/uploads.sl"
+import { decodes, picture, program, swept, Png, PngName } from "./support.sl"
 
 // A request as `sluice`'s `multipart` guard would have left it.
 carrying(files: array) -> object = { form: { fields: {}, files: files } }
@@ -91,7 +91,28 @@ async A_PHOTO_IS_WRITTEN_UNDER_ITS_OWN_NAME_AND_COMES_BACK_THE_SAME()
     assertEq(back.value.type, "image/png")
     assertEq(back.value.bytes, Png)
 
-    await remove(Root + "/" + PngName)
+    await swept(PngName)
+
+@test
+async THE_DISPLAY_COPY_IS_REMEMBERED_BESIDE_THE_ORIGINAL_AND_CANNOT_BE_ASKED_FOR()
+    if !decodes() then skip("slate:image is not on the JavaScript host")
+
+    // **The two files cannot be named after one another**, each being named by the digest of its own
+    // bytes -- so which copy belongs to which picture is a fact to write down, and `<original>.display`
+    // is where it is written.
+    await keep(picture("square.png"))
+
+    val made = await display(PngName)
+
+    assert(made != null, "a display copy was made and written down")
+    assert(endsWith(made, ".webp"), "and it is a WebP")
+    assert(await exists(Root + "/" + made), "which is really there")
+
+    // **Nothing can ever ask for the line itself.** Two dots is not a name `minted` accepts, so the
+    // one route that serves this directory cannot reach it.
+    assert(!(await stored(PngName + ".display")).ok)
+
+    await swept(PngName)
 
 @test
 async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_REFUSED_BEFORE_ANYTHING_IS_WRITTEN()

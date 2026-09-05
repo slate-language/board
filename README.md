@@ -324,6 +324,11 @@ repository and of nothing else; a program that uses these packages never sees np
   shows recognised by their own first bytes, and a file named by the SHA-256 of its content — so the
   name a client sent never reaches the filesystem, the same picture posted twice is one file, and the
   address can be cached for ever.
+- **And a picture is processed before it is kept.** The header is read first, so a small file claiming
+  a hundred million pixels is a `413` and nothing is ever decoded; then the original is kept and a
+  WebP copy is stored beside it — at most 1536 across for a photo, a fixed 128 square for an avatar —
+  which is what a page asks for with `?display`. A GIF keeps its original and nothing else, an
+  animation being a thing a still would throw away. `slate:image` is the whole of the machinery.
 - **A live thread.** `sluice`'s event hub over server-sent events, with `Last-Event-ID` replay: a
   reader that comes back is handed what it missed and nothing it has already seen.
 - **Every operational guard.** A request id on every answer, a deadline, a rate limit, a health check

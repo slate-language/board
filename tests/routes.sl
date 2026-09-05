@@ -9,15 +9,16 @@
 // SQL, and `tests/postgres.sl` is that half.
 
 import { response } from sluice
-import { exists, remove } from slate:fs
+import { exists } from slate:fs
 import { files } from slate:http
+import { imageShape } from slate:image
 
 import { application } from "../api/routes.sl"
 import { sessionStore } from "../api/sessions.sl"
-import { nameOf, Root } from "../api/uploads.sl"
+import { nameOf } from "../api/uploads.sl"
 import { board } from "./store.sl"
-import { client, doc, header, picture, program, shows, status, text, Png,
-    PngName } from "./support.sl"
+import { bomb, client, decodes, doc, gif, header, picture, program, shows, status, swept, text,
+    webp, wide, Gif, GifName, Png, PngName, WebpName } from "./support.sl"
 
 val Secret = "a key this suite made up"
 
@@ -40,14 +41,6 @@ made(options: object = {}) -> object
     { store: store, sessions: sessions, app: app, at: client(app) }
 
 quiet(r: object) = null
-
-// A photo a test wrote, taken away again -- so that running this suite twice does what running it
-// once did. **The file is named by its content**, so there is exactly one of them however many
-// tests posted it.
-async sweptOf(name: string)
-    await remove(Root + "/" + name)
-
-    null
 
 // The name of a picture nobody ever posted, shaped exactly as one this board hands out.
 never() -> string = nameOf(toBytes("a photograph nobody took"), "png")
@@ -461,9 +454,11 @@ async A_PHOTO_IS_KEPT_UNDER_THE_POST_AND_SHOWN_ON_IT()
 
     val page = await it.at.get("/threads/3")
 
-    assert(shows(page, "src=\"/uploads/" + PngName + "\""), "and the page shows it")
+    // **A page asks for `?display`**, which is the copy this board made to be looked at; the bare
+    // address is the file somebody posted.
+    assert(shows(page, "src=\"/uploads/" + PngName + "?display\""), "and the page shows it")
 
-    await sweptOf(PngName)
+    await swept(PngName)
 
 @test
 async A_PHOTO_IS_NAMED_BY_ITS_CONTENT_AND_NEVER_BY_WHAT_A_CLIENT_SENT()
@@ -489,7 +484,7 @@ async A_PHOTO_IS_NAMED_BY_ITS_CONTENT_AND_NEVER_BY_WHAT_A_CLIENT_SENT()
 
     assertEq(again.data.thread.photo, PngName)
 
-    await sweptOf(PngName)
+    await swept(PngName)
 
 @test
 async A_PHOTO_IS_SERVED_BACK_AS_THE_BYTES_THAT_WERE_POSTED()
@@ -515,7 +510,7 @@ async A_PHOTO_IS_SERVED_BACK_AS_THE_BYTES_THAT_WERE_POSTED()
 
     assertEq(status(back), 304)
 
-    await sweptOf(PngName)
+    await swept(PngName)
 
 @test
 async A_NAME_THIS_BOARD_NEVER_HANDED_OUT_IS_A_404_AND_NOT_A_READ()
@@ -525,6 +520,153 @@ async A_NAME_THIS_BOARD_NEVER_HANDED_OUT_IS_A_404_AND_NOT_A_READ()
     // exactly the shape of one and belongs to a picture nobody posted.
     assertEq(status(await it.at.get("/uploads/nonsense.png")), 404)
     assertEq(status(await it.at.get("/uploads/" + never())), 404)
+
+@test
+async A_PATH_WRITTEN_INTO_A_PHOTO_S_NAME_IS_A_404_HOWEVER_IT_IS_SPELLED()
+    // **The three shapes every file server has been caught by**, asked of this one: the escape a
+    // router decodes on the way in, the plain one a router may not, and a name cut short by a NUL
+    // where a C library reading it would stop. **None of them is a case anybody had to think of** --
+    // a name is 43 base64url characters, one dot and one of four extensions, which has no room for a
+    // slash, a dot pair or a NUL, so one sentence refuses all three before the disk is touched.
+    val it = made()
+
+    for where in ["/uploads/%2e%2e%2fserver.sl", "/uploads/../x", "/uploads/a%00.png"]
+        assertEq(status(await it.at.get(where)), 404, where + " is not a photo")
+
+@test
+async A_WEBP_IS_A_PICTURE_THIS_BOARD_TAKES()
+    // **What a browser re-encoding a photograph before uploading it usually writes**, and the one
+    // format of the four that is not `stb_image`'s. It is taken on every host: keeping the original
+    // is a write and not a decode.
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val posted = await it.at.upload("/threads",
+        { title: "a webp", body: "eight pixels a side", tags: "" }, webp("shot.webp"))
+
+    assertEq(status(posted), 303)
+    assertEq(doc(await it.at.asJson("/threads/3")).data.thread.photo, WebpName)
+
+    val got = await it.at.get("/uploads/" + WebpName)
+
+    assertEq(status(got), 200)
+    assertEq(header(got, "content-type"), "image/webp")
+
+    await swept(WebpName)
+
+@test
+async A_PICTURE_CLAIMING_MORE_PIXELS_THAN_THIS_BOARD_TAKES_IS_A_413()
+    if !decodes() then skip("slate:image is not on the JavaScript host")
+
+    // **Forty-five bytes claiming a hundred and forty-four million pixels.** Every limit on the
+    // number of bytes uploaded passes it, because the file really is that small; what refuses it is
+    // the header, read before anything is decoded -- so the answer names the size it claimed and no
+    // memory was ever asked for.
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val refused = await it.at.upload("/threads",
+        { title: "a large claim", body: "very large", tags: "" }, bomb("huge.png"))
+
+    assertEq(status(refused), 413)
+    assert(shows(refused, "12000 by 12000"), "and the answer says what it claimed to be")
+
+    // Nothing at all was written for it.
+    assertEq(await exists("./uploads/" + nameOf(bomb("x").bytes, "png")), false)
+
+@test
+async THE_DISPLAY_COPY_IS_A_WEBP_AT_THE_WIDTH_OF_THE_COLUMN_AND_THE_ORIGINAL_IS_STILL_THERE()
+    if !decodes() then skip("slate:image is not on the JavaScript host")
+
+    // A picture wider than the column it will sit in, which is the ordinary case: a phone's camera
+    // writes four thousand pixels across and `--m-measure` is 768 of them.
+    val it = made()
+    val big = wide(1920, 8)
+    val name = nameOf(big, "png")
+
+    await signedIn(it, "grace", "alsosecret")
+    await it.at.upload("/threads", { title: "a wide one", body: "much too wide", tags: "" },
+        { field: "photo", filename: "wide.png", type: "image/png", bytes: big })
+
+    // **The bare address is the file that was posted, byte for byte**, which is what keeping the
+    // original is for: the display copy is smaller and lossy, and the thing somebody actually sent
+    // is still there to be asked for.
+    val original = await it.at.get("/uploads/" + name)
+
+    assertEq(status(original), 200)
+    assertEq(header(original, "content-type"), "image/png")
+    assertEq(response(original).body, big)
+
+    // **And `?display` is a different file with a different name**, a WebP at most 1536 across --
+    // `mortar`'s own measure, doubled for a retina screen -- with the shape of the original kept.
+    val shown_ = await it.at.get("/uploads/" + name + "?display")
+
+    assertEq(status(shown_), 200)
+    assertEq(header(shown_, "content-type"), "image/webp")
+
+    val shape = imageShape(response(shown_).body)
+
+    assert(shape.ok, "the display copy is a picture")
+    assertEq(shape.value.width, 1536)
+    assertEq(shape.value.height, 6)
+    assert(len(response(shown_).body) < len(big), "and it is smaller than what was posted")
+
+    await swept(name)
+
+@test
+async A_GIF_HAS_NO_DISPLAY_COPY_AND_THE_SAME_ADDRESS_ANSWERS_THE_ORIGINAL()
+    // **A GIF keeps its original and nothing else**, `readImage` answering the FIRST FRAME of one:
+    // a derived copy of an animation is a still of it, and a board that quietly did that to a
+    // reaction GIF has thrown away what was posted.
+    //
+    // **So `?display` falls back**, which is what lets a page ask for the copy to look at without
+    // knowing whether there is one -- and is the same line that carries a host with no image library.
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+    await it.at.upload("/threads", { title: "a reaction", body: "moving, in principle", tags: "" },
+        gif("wave.gif"))
+
+    val got = await it.at.get("/uploads/" + GifName + "?display")
+
+    assertEq(status(got), 200)
+    assertEq(header(got, "content-type"), "image/gif")
+    assertEq(response(got).body, Gif)
+
+    await swept(GifName)
+
+@test
+async AN_AVATAR_S_DISPLAY_COPY_IS_THE_FIXED_SQUARE_WHATEVER_SHAPE_WAS_SENT()
+    if !decodes() then skip("slate:image is not on the JavaScript host")
+
+    // **`.m-avatar` is a circle with `object-fit: cover` on it**, so what is stored is the square
+    // that fills it: 128 pixels, which is `mortar`'s `large` at 4rem doubled for a retina screen.
+    // A picture 240 times wider than it is tall still comes back square.
+    val it = made()
+    val banner = wide(1920, 8)
+    val name = nameOf(banner, "png")
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val put = await it.at.upload("/profile/avatar", {},
+        { field: "photo", filename: "me.png", type: "image/png", bytes: banner })
+
+    assertEq(status(put), 303)
+
+    // **The row keeps the ORIGINAL's name**, exactly as a post's photo does; what differs is only
+    // the copy behind `?display`.
+    assertEq(doc(await it.at.asJson("/people/grace")).data.who.avatar, name)
+
+    val face = await it.at.get("/uploads/" + name + "?display")
+    val shape = imageShape(response(face).body)
+
+    assertEq(header(face, "content-type"), "image/webp")
+    assertEq(shape.value.width, 128)
+    assertEq(shape.value.height, 128)
+
+    await swept(name)
 
 @test
 async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_A_415_WHATEVER_IT_SAYS_IT_IS()
@@ -672,7 +814,14 @@ async THE_THEME_IS_IN_THE_ADDRESS_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDER
 async ANYTHING_THAT_IS_NOT_dark_IS_LIGHT_BECAUSE_A_QUERY_IS_SOMETHING_ANYBODY_MAY_TYPE()
     val it = made()
 
-    assert(shows(await it.at.get("/?theme=chartreuse"), "data-theme=\"light\""))
+    // **Nothing here normalises the address any more**: `mortar` 0.2.1's `Theme` reads a word it does
+    // not know as the default and says nothing, so the board serves a light page for a spelling a
+    // stranger chose rather than a 500 -- and the word stays in the address it was typed into.
+    val said = await it.at.get("/?theme=chartreuse")
+
+    assert(shows(said, "data-theme=\"light\""))
+    assert(shows(said, "\"url\":\"/?theme=chartreuse\""),
+        "and the page hydrates against the address a person is really on")
 
 // -- where a form says to go back to ------------------------------------------------------------------
 

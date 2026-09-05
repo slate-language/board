@@ -15,7 +15,7 @@ import { files } from slate:http
 
 import { answered, backTo, moved, wantsJson, whoIs } from "./render.sl"
 import { formCsrf, given, titleFor } from "./forms.sl"
-import { keep, kindOf, pick, stored } from "./uploads.sl"
+import { display, keep, keepAvatar, kindOf, minted, pick, stored } from "./uploads.sl"
 
 // -- what a client may send ------------------------------------------------------------------------
 //
@@ -414,14 +414,29 @@ async photo(req: object) -> object
 //
 // **The name IS the content**, so the answer may be cached for ever and a client that has it already
 // is told so rather than sent it again: an `ETag` that is the file's own digest cannot be stale.
+//
+// **THE NAME IS CHECKED BEFORE ANYTHING ELSE HAPPENS TO IT**, and that ordering is the point rather
+// than the check: what a request wrote is otherwise read back in an `ETag`, compared against a header
+// a client sent, and answered `304` with a year's caching on it -- all before the one function that
+// says whether this board ever handed such a name out. So `minted` is the first line, and a name that
+// is not one is a `404` that names nothing back.
+//
+// **`?display` is the copy a page shows and the bare address is what was posted**, byte for byte, so
+// keeping the original is something a reader can actually be given rather than a fact about the disk.
+// Where there is no display copy -- a GIF, or a picture kept by a host with no image library -- the
+// bare file answers for both, so a page asking for one always gets a picture.
 async served(req: object)
-    val name = req.params.name
-    val tag = "\"" + name + "\""
+    val name = string(req.params.name ?? "")
+
+    if !minted(name) then return problem(404, "Not Found", "there is no photo at that address")
+
+    val wanted = if has(req.query ?? {}, "display") then (await display(name)) ?? name else name
+    val tag = "\"" + wanted + "\""
 
     if (req.headers["if-none-match"] ?? "") == tag
         return { status: 304, headers: { ETag: tag, "Cache-Control": Forever }, body: "" }
 
-    val got = await stored(name)
+    val got = await stored(wanted)
 
     if !got.ok then return problem(404, "Not Found", "there is no photo called " + name)
 
@@ -492,7 +507,11 @@ async pictured(store: object, req: object)
 
     if you == null then return NotSignedIn("change your picture")
 
-    val kept = await photo(req)
+    // **An avatar is kept by a different call and not by a different route**: what a page shows for
+    // one is the fixed square rather than the picture at the width of a column, and that is the whole
+    // of the difference -- the original is stored and named exactly as a post's photo is.
+    val file = pick(req, "photo")
+    val kept = if file == null then { ok: true, value: null } else await keepAvatar(file)
 
     if !kept.ok then return refused(req, kept.status, kept.detail, "profile")
     if kept.value == null then return refused(req, 400, "no picture was sent", "profile")
