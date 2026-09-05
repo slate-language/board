@@ -10,9 +10,10 @@
 //
 // ## THREE OF THESE ARE SKIPPED, AND WHAT THEY ARE WAITING FOR IS `lath` AND NOT THIS BOARD
 //
-// **This board's pages cannot be hydrated on `lath` 0.4.0**, and every reduction is in
-// `tests-dom/framework.slx` beside this file -- lath and nothing else in each of them. Two of the
-// four stop hydration dead, because the markup a server writes cannot be walked back:
+// **This board's pages cannot be hydrated on `lath` 0.4.0, and 0.5.0 answers exactly the same.**
+// Every reduction is in `tests-dom/framework.slx` beside this file -- lath and nothing else in each
+// of them. Two of the four stop hydration dead, because the markup a server writes cannot be walked
+// back:
 //
 // - **Two text children in a row come back as one text node.** `<h2>{len(rows)} replies</h2>` is two
 //   children in the tree and `2 replies` in the markup, and the browser's parser has no way to know
@@ -79,7 +80,7 @@ fell(f) -> string
     said
 
 // What all four of the framework's defects are waiting on, said once.
-val Owed = "lath 0.4.0 cannot hydrate this page: see tests-dom/framework.slx"
+val Owed = "lath 0.4.0 and 0.5.0 cannot hydrate this page: see tests-dom/framework.slx"
 
 @test
 async A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL()

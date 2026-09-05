@@ -12,7 +12,8 @@ create table if not exists users (
     -- its own parameters, so raising them invalidates nothing already stored.
     password text not null,
     role     text not null default 'member',
-    -- A file name under `uploads/avatars/`, or nothing.
+    -- A photo's name under `uploads/`, which is the base64url of its own SHA-256 and then
+    -- what kind of picture it is -- or nothing, for somebody who has not put one up.
     avatar   text,
     made     timestamptz not null default now()
 );

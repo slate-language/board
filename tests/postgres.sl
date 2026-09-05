@@ -6,14 +6,13 @@
 // SQLSTATE a unique violation comes back as, and the columns as the types they were read into.
 //
 // **`slate:net` is not on the JavaScript back end**, so nothing here can run under `slate test --js`:
-// the names import and say *"not in the JavaScript back end yet"* when a program reaches them. slate
-// has no way to mark a test as skipped on one host, so each test here asks whether it can bind a
-// socket and answers rather than failing, and the run says so once on `stderr` -- said with `print` it
-// would be a skip nobody is ever told about, the runner keeping what a passing test wrote and showing
-// it only above a failure.
+// the names import and say *"not in the JavaScript back end yet"* when a program reaches them.
+// **`skip(reason)` is what says so, and it arrived in slate 0.0.30**; each test here asks whether it
+// can bind a socket -- by TRYING, a slate program having no name for which host it is running on --
+// and skips with the reason where it cannot. Before that name existed a test in this position could
+// only `return`, which is a pass nobody is ever told about.
 
 import { close as closeSocket } from slate:net
-import { stderr } from slate:process
 import { hash } from slate:password
 
 import { orderNamed, postgres } from "../api/postgres.sl"
@@ -34,7 +33,7 @@ val UserColumns = [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "
 
 var probed = null
 
-// Whether this host has sockets at all, asked once and said once.
+// Whether this host has sockets at all, asked once by trying.
 sockets() -> boolean
     if probed == null then probed = askedFor()
 
@@ -43,10 +42,7 @@ sockets() -> boolean
 askedFor() -> boolean
     val s = server((sql, params) -> { tag: "SELECT 0" }) catch e -> null
 
-    if s == null
-        stderr("  --    tests/postgres.sl needs a real socket, and this host has none\n")
-
-        return false
+    if s == null then return false
 
     closeSocket(s)
 
@@ -102,7 +98,7 @@ val OneThread = { "select count(*) as n": { fields: [{ name: "n", oid: 20 }], ro
 
 @test
 async THE_LIST_ASKS_FOR_A_COUNT_AND_THEN_A_PAGE()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("list test")
     val seen = []
@@ -133,7 +129,7 @@ async THE_LIST_ASKS_FOR_A_COUNT_AND_THEN_A_PAGE()
 
 @test
 async A_TAG_AND_A_SEARCH_TRAVEL_AS_PARAMETERS_AND_NEVER_AS_TEXT()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("filter test")
     val seen = []
@@ -171,7 +167,7 @@ A_SORT_KEY_A_CLIENT_INVENTED_IS_THE_FIRST_ONE()
 
 @test
 async A_PASSWORD_IS_HASHED_ON_THE_WAY_IN_AND_NEVER_COMES_BACK_OUT()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("sign-up test")
     val seen = []
@@ -195,7 +191,7 @@ async A_PASSWORD_IS_HASHED_ON_THE_WAY_IN_AND_NEVER_COMES_BACK_OUT()
 
 @test
 async A_NAME_SOMEBODY_ELSE_HAS_COMES_BACK_AS_23505_AND_NOT_AS_A_FAULT()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("duplicate test")
     val seen = []
@@ -214,7 +210,7 @@ async A_NAME_SOMEBODY_ELSE_HAS_COMES_BACK_AS_23505_AND_NOT_AS_A_FAULT()
 
 @test
 async A_PASSWORD_IS_CHECKED_AGAINST_THE_RECORD_AND_A_WRONG_ONE_IS_A_NULL()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("sign-in test")
     val seen = []
@@ -247,7 +243,7 @@ async A_PASSWORD_IS_CHECKED_AGAINST_THE_RECORD_AND_A_WRONG_ONE_IS_A_NULL()
 
 @test
 async A_REPLY_AND_THE_THREAD_S_COUNTERS_MOVE_IN_ONE_TRANSACTION()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("reply test")
     val seen = []
@@ -284,7 +280,7 @@ async A_REPLY_AND_THE_THREAD_S_COUNTERS_MOVE_IN_ONE_TRANSACTION()
 
 @test
 async THE_HEALTH_CHECK_IS_A_ROUND_TRIP_AND_NOT_A_FLAG()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("health test")
     val seen = []
@@ -299,7 +295,7 @@ async THE_HEALTH_CHECK_IS_A_ROUND_TRIP_AND_NOT_A_FLAG()
 
 @test
 async A_DATABASE_THAT_IS_NOT_THERE_IS_AN_ANSWER_AND_NOT_A_FAULT()
-    if !sockets() then return
+    if !sockets() then skip("this host has no listener, so there is no server to speak to")
 
     val guard = late("no-database test")
 

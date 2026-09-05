@@ -11,7 +11,8 @@
 // empty text child both disappear into the markup -- and two of them are written again on the way in
 // when they did not need to be.
 //
-// Found 2026-09-05 writing this board's hydration suite, on lath 0.4.0 and slate 0.0.30.
+// Found 2026-09-05 writing this board's hydration suite, on lath 0.4.0 and slate 0.0.30, and
+// checked again against lath 0.5.0 in a project depending on nothing but lath: all four stand.
 
 import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
 import { domHost } from lath/dom
@@ -80,7 +81,7 @@ One(props: object) =
 
 @test
 TWO_TEXT_CHILDREN_IN_A_ROW_COME_BACK_AS_ONE_TEXT_NODE()
-    skip("lath 0.4.0 writes no seam between adjacent text children")
+    skip("lath 0.4.0 and 0.5.0 write no seam between adjacent text children")
 
     // `<h2>{2} replies</h2>` is two children in the tree and `<h2>2 replies</h2>` in the markup, and
     // a parser has no way to know there was a seam. **React writes a `<!-- -->` between them for
@@ -91,7 +92,7 @@ TWO_TEXT_CHILDREN_IN_A_ROW_COME_BACK_AS_ONE_TEXT_NODE()
 
 @test
 A_TEXT_CHILD_THAT_IS_THE_EMPTY_STRING_SURVIVES_THE_MARKUP()
-    skip("lath 0.4.0 loses an empty text child between the two hosts")
+    skip("lath 0.4.0 and 0.5.0 lose an empty text child between the two hosts")
 
     // `<p>{""}</p>` writes `<p></p>`, so the tree wants a text node the page has not got. **Either
     // host may decide it** -- a tree that never makes an empty text node, or markup that says the
@@ -125,7 +126,7 @@ Plain_(props: object) =
 
 @test
 async A_VALUE_ALREADY_ON_THE_PAGE_IS_NOT_WRITTEN_AGAIN()
-    skip("lath 0.4.0 sets value as a property without comparing it first")
+    skip("lath 0.4.0 and 0.5.0 set value as a property without comparing it first")
 
     // **`value` is set as a PROPERTY and not an attribute**, which is what keeps a re-render from
     // freezing a field somebody is typing in -- and the property setter is not guarded by the
@@ -136,7 +137,7 @@ async A_VALUE_ALREADY_ON_THE_PAGE_IS_NOT_WRITTEN_AGAIN()
 
 @test
 async A_NUMERIC_ATTRIBUTE_IS_COMPARED_AS_THE_TEXT_IT_IS_ON_THE_PAGE()
-    skip("lath 0.4.0 compares rows={5} against the page's \"5\" and rewrites it")
+    skip("lath 0.4.0 and 0.5.0 compare rows={5} against the page's \"5\" and rewrite it")
 
     // An attribute is text, always. `rows={5}` is the ordinary way to write it and the comparison
     // that decides whether to write it has to say so.
