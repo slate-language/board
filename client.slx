@@ -1,0 +1,199 @@
+// The board, in a browser.
+//
+//     slate js client.slx -o public/app.js
+//
+// **It adopts the markup the server sent rather than building it again.** `hydrate` walks the tree the
+// same way `mount` does and takes every node it would have created from the page instead -- so the
+// page makes no DOM mutations at all on the way in, and what it gains is the one thing markup cannot
+// carry: event listeners.
+//
+// **This file is the only one that knows there is a browser.** Everything under `app/` is handed a
+// path, a record and two functions, and renders the same on a server; what is here is where those come
+// from -- the address bar, `fetch`, and the state the server left in the page.
+//
+// **NOTHING HERE MAY REACH `slate:net`.** `slate js` writes one self-contained file and the JavaScript
+// back end has no sockets, so an import that led to `listen` would compile and then say *"not in the
+// JavaScript back end yet"* the moment the page loaded. That is why `lath` splits `lath/router` from
+// `lath/dom`, and why `api/` is not imported from here.
+
+import { createElement, Fragment, hydrate, useEffect, useRef, useState } from lath
+import { domHost } from lath/dom
+import { navigateWith } from lath/router
+import { byId, nodeText, onNavigate, pushPath, replacePath } from slate:dom
+
+import { App } from "./app/pages.slx"
+
+// The query parameter that asks a page for its values rather than for itself.
+val AsJson = "format=json"
+
+// How often an open thread asks for replies it has not seen.
+//
+// **This is a POLL and it should be the event stream the server is already publishing.** `sluice`'s
+// hub is live at `/threads/:id/events` and `curl` reads it; what is missing is a *reader* -- a browser
+// has `EventSource` and `slate:dom` does not bind it, and slate's `fetch` answers a whole body rather
+// than a stream, so there is no way for a slate program in a page to consume server-sent events at
+// all. One name on `slate:dom` closes this; the poll is what stands in until it exists.
+val Beat = 3000
+
+// -- the program -------------------------------------------------------------------------------------
+
+// Everything the page holds: where it is, and what the server said about it.
+Root(props: object) =
+    val start = props.state
+    val [url, setUrl] = useState(start.url)
+    val [state, setState] = useState(start)
+
+    // **What an asynchronous answer reads instead of what it closed over.** A fetch begun three
+    // seconds ago must not write a page built out of a record that has since been replaced, and a
+    // timer installed once must see the thread that is open now.
+    val latest = useRef(state)
+
+    latest.current = state
+
+    // -- the address ------------------------------------------------------------------------------
+
+    // **`pushPath` does NOT raise `onNavigate`** -- a browser raises it for a movement the user made
+    // and never for one the program made itself -- so a push sets the state too, and the listener
+    // below is only ever the back and forward buttons.
+    go(to: string)
+        pushPath(to)
+        setUrl(to)
+
+    // A sort, a filter or a page number REPLACES rather than pushes: it is not somewhere a person
+    // navigated to, and a back button filled with every keystroke of a search box is what this avoids.
+    replace(to: string)
+        replacePath(to)
+        setUrl(to)
+
+    moved(where: string)
+        setUrl(where)
+
+    // **Installed once and not on every render**, which is what the empty dependency list says: a
+    // second `onNavigate` would be a second handler for one movement, and `slate:dom` keeps one per
+    // registration.
+    wire()
+        navigateWith(go)
+        onNavigate(moved)
+
+        null
+
+    useEffect(wire, [])
+
+    // -- the values -------------------------------------------------------------------------------
+
+    // **A link followed in a hydrated page costs the rows and nothing else.** The server answers the
+    // same record it rendered from, so there is no markup, no stylesheet and no second copy of the
+    // header on the wire -- and the page it is replacing stays on the screen while it is asked for.
+    async pull(to: string)
+        val got = await fetch(asJson(to), { headers: { Accept: "application/json" } })
+
+        if !got.ok then return null
+
+        val parsed = parseJSON(got.value.body)
+
+        if !parsed.ok then return null
+
+        setState(parsed.value)
+
+    following()
+        if url != state.url then pull(url)
+
+        null
+
+    useEffect(following, [url])
+
+    // -- a thread that is being added to --------------------------------------------------------------
+
+    // One ask for the replies past the last one on the screen. **What comes back is appended and the
+    // rows already there are the same values**, so the reconciler matches them by key, leaves them
+    // where they are, and `memo` keeps each from being rendered again -- which is what makes a reply
+    // arriving an insertion rather than a list rebuilt.
+    async catchUp()
+        val was = latest.current
+
+        if was.data.page != "thread" then return null
+
+        val rows = was.data.replies
+        val after = if len(rows) == 0 then 0 else rows[len(rows) - 1].id
+        val where = "/api/threads/" + string(was.data.thread.id) + "/replies?after=" + string(after)
+        val got = await fetch(where, { headers: { Accept: "application/json" } })
+
+        if !got.ok then return null
+
+        val parsed = parseJSON(got.value.body)
+
+        if !parsed.ok then return null
+
+        val fresh = parsed.value.replies ?? []
+
+        if len(fresh) == 0 then return null
+
+        val now = latest.current
+
+        if now.data.page != "thread" then return null
+
+        setState(now with { data: now.data with { replies: concat(now.data.replies, fresh) } })
+
+    listening()
+        if state.data.page != "thread" then return null
+
+        val beat = setInterval(catchUp, Beat)
+
+        () -> clearInterval(beat)
+
+    useEffect(listening, [state.data.page, state.url])
+
+    // -- the forms ----------------------------------------------------------------------------------
+
+    // What `app/forms.slx` calls instead of letting the browser post the form.
+    //
+    // **The fields go as JSON and the token goes with them**, which is the one thing a plain form
+    // cannot do: `api/forms.sl`'s `given` reads a JSON body, a urlencoded one and a multipart one
+    // alike, so the server has one route for both ways of asking.
+    async send(action: string, fields: object) -> object
+        val got = await fetch(asJson(action),
+            { method: "POST",
+              headers: { "Content-Type": "application/json", "x-csrf-token": fields["_csrf"] ?? "" },
+              body: toJSON(fields) })
+
+        if !got.ok then return { ok: false, detail: "the board is not answering" }
+
+        val parsed = parseJSON(got.value.body)
+        val said = if parsed.ok then parsed.value else {}
+
+        if got.value.status >= 400
+            return { ok: false,
+                     status: got.value.status,
+                     detail: said.detail ?? ("that was refused with " + string(got.value.status)),
+                     mismatch: said.mismatch ?? [] }
+
+        val to = said.to ?? null
+
+        if to == null || to == url then pull(url) else go(to)
+
+        { ok: true }
+
+    val nav = { url: url, go: go, replace: replace }
+    val out = <App nav={nav} data={state.data} user={state.user} csrf={state.csrf}
+                   theme={state.theme} send={send}/>
+
+    out
+
+asJson(url: string) -> string = url + (if contains(url, "?") then "&" else "?") + AsJson
+
+// -- what the server left in the page ------------------------------------------------------------------
+
+// **The state the markup was rendered from travels in the page**, so there is nothing to ask for
+// before the first paint and the browser adopts markup it was given the ingredients for.
+started() -> object
+    val held = byId("board-state")
+
+    if held == null then throw "this page carries no board state, so there is nothing to hydrate against"
+
+    val parsed = parseJSON(nodeText(held))
+
+    if !parsed.ok then throw "the board state in this page is not JSON: " + parsed.error
+
+    parsed.value
+
+hydrate(<Root state={started()}/>, domHost("#app"))

@@ -1,0 +1,360 @@
+// The pages, the route table, and the one component both halves of the program mount.
+//
+// **Every page is a plain function of the contexts** -- who is signed in, what the server worked out
+// for this URL, where the address is -- and reaches for nothing else. That is what lets the server
+// render each of them to markup and the browser adopt the same markup and carry on: `server.sl` and
+// `client.slx` differ in the values they hand the providers and in nothing about the pages.
+
+import { createElement, Fragment, Boundary, memo, useContext } from lath
+import { Anything, Link, router } from lath/router
+
+import { Board, Nav, Post, Session, Theme } from "./context.sl"
+import { At, Avatar, Byline, Card, Pager, Photo, SortBar, TagBar, TagList } from "./parts.slx"
+import { AvatarForm, Doing, ReplyForm, SearchForm, SignForm, ThreadForm } from "./forms.slx"
+
+// -- what a page shows while its data is on the way ------------------------------------------------
+
+// **The browser fetches a page's data after the address has already moved**, so for one turn the
+// router is showing a view whose data belongs to the page before it. Each view says which page it is
+// for, and this is what stands in the gap.
+export Pending(props: object) =
+    val out = <p class="pending" aria-live="polite">Fetching...</p>
+
+    out
+
+// -- the thread list ---------------------------------------------------------------------------------
+
+export List(props: object) =
+    val board = useContext(Board)
+
+    if board.page != "list" then return Pending({})
+
+    val list = board.threads
+    val rows = list.rows
+    val one = (t) -> <Card key={t.id} thread={t}/>
+
+    // **A block `if` is bound to a name before the tag rather than written inside a hole.** A hole
+    // takes an expression, and slate's block `if` is a statement -- so this is the shape every
+    // either-or in this file has.
+    val cards = if len(rows) == 0
+        <p class="empty">Nothing here yet.</p>
+    else
+        <ol class="threads">{rows.map(one)}</ol>
+
+    val out = <div class="page list">
+        <div class="controls">
+            <SortBar sort={board.sort ?? "newest"}/>
+            <TagBar tags={board.tags ?? []} on={board.tag ?? ""}/>
+        </div>
+        {cards}
+        <Pager page={list.page} size={list.size} total={list.total}/>
+    </div>
+
+    out
+
+// -- one thread ----------------------------------------------------------------------------------
+
+reply(props: object) =
+    val r = props.reply
+
+    val drop = if props.mine ?? false
+        <Doing class="drop" action={"/replies/" + string(r.id) + "/delete"} label="Delete"
+               tone="danger"/>
+    else
+        <span class="not-mine"/>
+
+    val out = <li class="reply">
+        <Byline name={r.author_name} avatar={r.author_avatar} at={r.made}/>
+        <div class="said">{r.body}</div>
+        <Photo file={r.photo} alt={"a photo by " + r.author_name}/>
+        {drop}
+    </li>
+
+    out
+
+// **Keyed by the row's id and memoised**, which is the pair that makes a live thread insert one reply
+// rather than rewrite the list: the key is what the reconciler matches on and `memo` is what keeps a
+// row that did not change from being rendered again.
+val Reply = memo(reply)
+
+// **The thread view is inside a `Boundary`.** A row the server sent that this page cannot render is a
+// defect in the program and stays a fault -- what a boundary buys is that the rest of the page, the
+// header and the reply form included, is still there to read while it is fixed.
+export Thread(props: object) =
+    val board = useContext(Board)
+
+    if board.page != "thread" then return Pending({})
+
+    val out = <Boundary fallback={broken}><ThreadView/></Boundary>
+
+    out
+
+broken(e: object) =
+    val out = <div class="problem" role="alert"><p>This thread could not be shown.</p>
+        <p class="detail">{e.message}</p></div>
+
+    out
+
+ThreadView(props: object) =
+    val board = useContext(Board)
+    val session = useContext(Session)
+    val t = board.thread
+    val rows = board.replies
+    val admin = session.user != null && session.user.role == "admin"
+    val one = (r) -> <Reply key={r.id} reply={r} mine={admin || mine(session, r)}/>
+
+    val drop = if admin
+        <Doing class="drop" action={"/threads/" + string(t.id) + "/delete"} label="Delete thread"
+               tone="danger"/>
+    else
+        <span class="not-mine"/>
+
+    val below = if session.user == null
+        <p class="hint"><Link to="/signin">Sign in</Link> to reply.</p>
+    else
+        <ReplyForm thread={t.id}/>
+
+    val out = <div class="page thread">
+        <article class="post">
+            <h1>{t.title}</h1>
+            <Byline name={t.author_name} avatar={t.author_avatar} at={t.made}/>
+            <TagList tags={t.tags ?? []}/>
+            <div class="said">{t.body}</div>
+            <Photo file={t.photo} alt={t.title}/>
+            {drop}
+        </article>
+        <h2 class="count">{len(rows)} replies</h2>
+        <ol class="replies">{rows.map(one)}</ol>
+        {below}
+    </div>
+
+    out
+
+mine(session: object, r: object) -> boolean =
+    session.user != null && session.user.id == r.author
+
+// -- the forms that are pages ------------------------------------------------------------------------
+
+export Compose(props: object) =
+    val board = useContext(Board)
+    val session = useContext(Session)
+
+    if board.page != "compose" then return Pending({})
+    if session.user == null then return needSignIn()
+
+    val out = <div class="page compose">
+        <ThreadForm detail={board.detail ?? null} mismatch={board.mismatch ?? []}/>
+    </div>
+
+    out
+
+needSignIn() =
+    val out = <div class="page hint"><p><Link to="/signin">Sign in</Link> to post.</p></div>
+
+    out
+
+export SignIn(props: object) =
+    val board = useContext(Board)
+    val out = <div class="page sign-page">
+        <SignForm detail={board.detail ?? null} mismatch={board.mismatch ?? []}/>
+    </div>
+
+    out
+
+export SignUp(props: object) =
+    val board = useContext(Board)
+    val out = <div class="page sign-page">
+        <SignForm joining detail={board.detail ?? null} mismatch={board.mismatch ?? []}/>
+    </div>
+
+    out
+
+// -- somebody's page -------------------------------------------------------------------------------
+
+export Profile(props: object) =
+    val board = useContext(Board)
+    val session = useContext(Session)
+
+    if board.page != "profile" then return Pending({})
+
+    val who = board.who
+    val threads = board.threads
+    val replies = board.replies
+    val itsMe = session.user != null && session.user.id == who.id
+    val aThread = (t) -> <li key={t.id}><Link to={"/threads/" + string(t.id)}>{t.title}</Link>
+        <At at={t.made}/></li>
+    val aReply = (r) -> <li key={r.id}><Link to={"/threads/" + string(r.thread)}>{r.thread_title}</Link>
+        <At at={r.made}/></li>
+    val picture = if itsMe then <AvatarForm/> else <span class="not-mine"/>
+
+    val started = if len(threads) == 0
+        <p class="empty">None yet.</p>
+    else
+        <ul class="own">{threads.map(aThread)}</ul>
+
+    val said = if len(replies) == 0
+        <p class="empty">None yet.</p>
+    else
+        <ul class="own">{replies.map(aReply)}</ul>
+
+    val out = <div class="page profile">
+        <header class="who">
+            <Avatar name={who.name} file={who.avatar} size="large"/>
+            <h1>{who.name}</h1>
+            <p class="role">{who.role} since <At at={who.made}/></p>
+        </header>
+        {picture}
+        <section class="posts">
+            <h2>Threads</h2>
+            {started}
+            <h2>Replies</h2>
+            {said}
+        </section>
+    </div>
+
+    out
+
+// -- the admin page --------------------------------------------------------------------------------
+
+export Admin(props: object) =
+    val board = useContext(Board)
+    val session = useContext(Session)
+
+    if board.page != "admin" then return Pending({})
+    if session.user == null || session.user.role != "admin" then return refused()
+
+    val people = board.users
+    val live = board.sessions
+    val aPerson = (u) -> <tr key={u.id}>
+        <td><Link to={"/people/" + u.name}>{u.name}</Link></td>
+        <td>{u.role}</td>
+        <td><At at={u.made}/></td>
+    </tr>
+    val aSession = (s) -> <tr key={s.id}>
+        <td class="who">{s.name}</td>
+        <td><At at={s.at}/></td>
+        <td><Doing class="drop" action={"/admin/sessions/" + s.id + "/revoke"} label="Revoke"
+                   tone="danger"/></td>
+    </tr>
+    val open = if len(live) == 0
+        <p class="empty">Nobody is signed in.</p>
+    else
+        <table class="sessions">
+            <thead><tr><th>Who</th><th>Since</th><th></th></tr></thead>
+            <tbody>{live.map(aSession)}</tbody>
+        </table>
+
+    val out = <div class="page admin">
+        <h1>Admin</h1>
+        <section>
+            <h2>People</h2>
+            <table class="people">
+                <thead><tr><th>Name</th><th>Role</th><th>Joined</th></tr></thead>
+                <tbody>{people.map(aPerson)}</tbody>
+            </table>
+        </section>
+        <section>
+            <h2>Sessions</h2>
+            {open}
+        </section>
+    </div>
+
+    out
+
+refused() =
+    val out = <div class="page hint"><p>That page is for administrators.</p></div>
+
+    out
+
+// -- nothing there ---------------------------------------------------------------------------------
+
+export Missing(props: object) =
+    val out = <div class="page missing">
+        <h1>Nothing at {props.at ?? "/"}</h1>
+        <p><Link to="/">Back to the board</Link></p>
+    </div>
+
+    out
+
+// -- the routes ------------------------------------------------------------------------------------
+
+// **One table, imported by the server and by the page.** `lath/router` is handed a path and never
+// reads one, which is what lets these render in both places; what differs is `req.path` on one side
+// and `usePath()` on the other.
+export val routes = [
+    { path: "/", view: (m) -> <List/> },
+    { path: "/new", view: (m) -> <Compose/> },
+    { path: "/signin", view: (m) -> <SignIn/> },
+    { path: "/signup", view: (m) -> <SignUp/> },
+    { path: "/threads/:id", view: (m) -> <Thread id={m.params.id}/> },
+    { path: "/people/:name", view: (m) -> <Profile name={m.params.name}/> },
+    { path: "/admin", view: (m) -> <Admin/> },
+    { path: Anything, view: (m) -> <Missing at={m.path}/> },
+]
+
+// -- the frame -------------------------------------------------------------------------------------
+
+Head(props: object) =
+    val board = useContext(Board)
+    val session = useContext(Session)
+    val theme = useContext(Theme)
+    val you = session.user
+
+    val boss = if you != null && you.role == "admin"
+        <Link class="plain" to="/admin">Admin</Link>
+    else
+        <span class="not-admin"/>
+
+    val who = if you == null
+        <Fragment>
+            <Link class="plain" to="/signin">Sign in</Link>
+            <Link class="plain" to="/signup">Join</Link>
+        </Fragment>
+    else
+        <Fragment>
+            <Link class="plain" to="/new">New thread</Link>
+            <Link class="plain who" to={"/people/" + you.name}>
+                <Avatar name={you.name} file={you.avatar}/>{you.name}
+            </Link>
+            {boss}
+            <Doing class="out" action="/signout" label="Sign out"/>
+        </Fragment>
+
+    val out = <header class="board-head">
+        <Link class="brand" to="/">the board</Link>
+        <SearchForm q={board.q ?? ""}/>
+        <nav class="me">
+            {who}
+            <Doing class="theme" action="/theme" label={if theme == "dark" then "Light" else "Dark"}/>
+        </nav>
+    </header>
+
+    out
+
+// The whole page below the shell: the providers, the header, the routed view and the footer.
+//
+// **This is what both hosts mount.** `server.sl` renders it through `lath`'s string host and puts the
+// markup inside `<div id="app">`; `client.slx` hydrates the same element against that markup.
+export App(props: object) =
+    val nav = props.nav ?? { url: "/", go: null, replace: null }
+    val session = { user: props.user ?? null, csrf: props.csrf ?? "" }
+    val theme = props.theme ?? "light"
+    val out = <Nav.Provider value={nav}>
+        <Post.Provider value={{ send: props.send ?? null }}>
+            <Session.Provider value={session}>
+                <Theme.Provider value={theme}>
+                    <Board.Provider value={props.data ?? { page: "missing", at: "/" }}>
+                        <div class={"board " + theme}>
+                            <Head/>
+                            <main>{router(routes, nav.url)}</main>
+                            <footer class="board-foot">
+                                <p>sluice, lath and pg -- the slate stack, end to end.</p>
+                            </footer>
+                        </div>
+                    </Board.Provider>
+                </Theme.Provider>
+            </Session.Provider>
+        </Post.Provider>
+    </Nav.Provider>
+
+    out

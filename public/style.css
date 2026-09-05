@@ -1,0 +1,505 @@
+/* The board's whole appearance, hand-written.
+ *
+ * Two things decide how this file is arranged.
+ *
+ * **Custom properties carry the theme and nothing else does.** Every colour below is a `var(--…)`, so
+ * `.board.dark` re-declares eleven names and the entire page follows -- no second set of rules, no
+ * class per element, and nothing that can be dark in one place and light in another. The server puts
+ * the class on before it sends the markup, so a dark page never flashes white on the way in.
+ *
+ * **The blocks are named after the components that render them**, one block per component, in the
+ * order a page is built out of them -- `.board-head`, `.thread-card`, `.reply`, `.field`. Nesting is
+ * the browser's own, which is what makes that possible without a preprocessor: everything a component
+ * owns is inside one brace, so a block moves beside its component the day slate can import CSS.
+ */
+
+/* -- the palette --------------------------------------------------------------------------------- */
+
+.board {
+    --ink: #16181d;
+    --ink-soft: #5a616e;
+    --ink-faint: #8d94a3;
+    --paper: #fbfbfd;
+    --card: #ffffff;
+    --line: #e2e5ec;
+    --accent: #2f5de0;
+    --accent-soft: #eaefff;
+    --danger: #b3261e;
+    --good: #1f7a4d;
+    --shadow: 0 1px 2px rgb(20 24 33 / 6%), 0 6px 20px rgb(20 24 33 / 5%);
+
+    --gap: 1rem;
+    --radius: 10px;
+    --measure: 46rem;
+
+    color: var(--ink);
+    background: var(--paper);
+    min-height: 100vh;
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    &.dark {
+        --ink: #e9ecf2;
+        --ink-soft: #a6adbb;
+        --ink-faint: #767e8d;
+        --paper: #12141a;
+        --card: #191c24;
+        --line: #2a2f3a;
+        --accent: #8aa6ff;
+        --accent-soft: #1d2540;
+        --danger: #ef8a80;
+        --good: #6fd39f;
+        --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 20px rgb(0 0 0 / 30%);
+    }
+}
+
+html { background: #fbfbfd; }
+html.dark { background: #12141a; }
+
+body { margin: 0; }
+
+/* -- the frame ------------------------------------------------------------------------------------ */
+
+.board {
+    display: flex;
+    flex-direction: column;
+
+    & main {
+        width: min(100% - 2rem, var(--measure));
+        margin: 2rem auto;
+        flex: 1;
+    }
+
+    & a {
+        color: var(--accent);
+        text-decoration-color: color-mix(in oklab, var(--accent) 35%, transparent);
+        text-underline-offset: 2px;
+    }
+
+    & h1, & h2, & h3 { line-height: 1.25; letter-spacing: -0.01em; }
+    & h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+    & h2 { font-size: 1.15rem; margin: 1.5rem 0 .5rem; }
+}
+
+.board-head {
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    flex-wrap: wrap;
+    padding: .75rem max(1rem, calc((100% - var(--measure)) / 2));
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+
+    & .brand {
+        font-weight: 650;
+        font-size: 1.05rem;
+        color: var(--ink);
+        text-decoration: none;
+        letter-spacing: -0.02em;
+    }
+
+    & .me {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        margin-left: auto;
+        flex-wrap: wrap;
+    }
+
+    & .me .plain {
+        color: var(--ink-soft);
+        text-decoration: none;
+        font-size: .9rem;
+        padding: .3rem .55rem;
+        border-radius: 999px;
+
+        &:hover { background: var(--accent-soft); color: var(--accent); }
+    }
+
+    & .me .who { display: inline-flex; align-items: center; gap: .35rem; }
+}
+
+.board-foot {
+    border-top: 1px solid var(--line);
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: .85rem;
+}
+
+/* -- the search box ------------------------------------------------------------------------------- */
+
+.find {
+    display: flex;
+    gap: .35rem;
+    flex: 1 1 12rem;
+    max-width: 22rem;
+
+    & input {
+        flex: 1;
+        min-width: 0;
+        padding: .4rem .7rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--paper);
+        color: inherit;
+        font: inherit;
+        font-size: .9rem;
+    }
+
+    & button {
+        border: 0;
+        background: none;
+        color: var(--ink-soft);
+        font: inherit;
+        font-size: .85rem;
+        cursor: pointer;
+        padding: 0 .5rem;
+
+        &:hover { color: var(--accent); }
+    }
+}
+
+/* -- the list's controls -------------------------------------------------------------------------- */
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap);
+    align-items: baseline;
+    margin-bottom: 1.25rem;
+}
+
+.sorts, .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    & a {
+        display: inline-block;
+        padding: .25rem .6rem;
+        border-radius: 999px;
+        font-size: .85rem;
+        text-decoration: none;
+        color: var(--ink-soft);
+        border: 1px solid transparent;
+    }
+
+    & .on a { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+    & .off a:hover { border-color: var(--line); }
+}
+
+.tags {
+    margin-left: auto;
+
+    & .count {
+        margin-left: .35rem;
+        color: var(--ink-faint);
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+/* -- a thread in the list ------------------------------------------------------------------------- */
+
+.threads {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+}
+
+.thread-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow);
+
+    & h2 { margin: 0; font-size: 1.1rem; }
+    & h2 a { color: var(--ink); text-decoration: none; }
+    & h2 a:hover { color: var(--accent); }
+
+    & .excerpt { color: var(--ink-soft); margin: .4rem 0; }
+
+    & .replies {
+        margin: .4rem 0 0;
+        font-size: .85rem;
+        color: var(--ink-faint);
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+.byline {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    margin: .35rem 0;
+    font-size: .85rem;
+    color: var(--ink-faint);
+
+    & .who { color: var(--ink-soft); text-decoration: none; font-weight: 550; }
+    & .who:hover { color: var(--accent); }
+}
+
+.at { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+/* -- somebody's picture --------------------------------------------------------------------------- */
+
+.avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: .75rem;
+    font-weight: 650;
+    flex: none;
+
+    &.large { width: 4rem; height: 4rem; font-size: 1.5rem; }
+}
+
+/* -- the tags on one thread ------------------------------------------------------------------------ */
+
+.tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    list-style: none;
+    margin: .4rem 0;
+    padding: 0;
+
+    & .tag {
+        font-size: .75rem;
+        padding: .1rem .5rem;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        text-decoration: none;
+    }
+}
+
+/* -- the pager ------------------------------------------------------------------------------------- */
+
+.pager {
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    margin: 1.5rem 0;
+    font-size: .9rem;
+
+    & .step { color: var(--accent); text-decoration: none; }
+    & .step.off { color: var(--ink-faint); }
+
+    & .where {
+        margin-left: auto;
+        margin-right: auto;
+        color: var(--ink-soft);
+        font-variant-numeric: tabular-nums;
+    }
+
+    & .total { margin-left: .6rem; color: var(--ink-faint); }
+}
+
+/* -- one thread ------------------------------------------------------------------------------------ */
+
+.post {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.4rem;
+    box-shadow: var(--shadow);
+}
+
+.said { white-space: pre-wrap; overflow-wrap: anywhere; margin: .75rem 0; }
+
+.photo {
+    margin: .75rem 0 0;
+
+    & img {
+        max-width: 100%;
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        display: block;
+    }
+}
+
+.count { color: var(--ink-soft); font-size: 1rem; }
+
+.replies {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+}
+
+.reply {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .8rem 1rem;
+
+    & .said { margin: .35rem 0 0; }
+}
+
+.hint { color: var(--ink-soft); }
+
+/* -- forms ----------------------------------------------------------------------------------------- */
+
+.card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.4rem;
+    box-shadow: var(--shadow);
+    margin: 1.25rem 0;
+}
+
+.sign { max-width: 24rem; margin-inline: auto; }
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    margin: 0 0 .9rem;
+
+    & label { font-size: .85rem; color: var(--ink-soft); font-weight: 550; }
+
+    & input, & textarea {
+        font: inherit;
+        color: inherit;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: .5rem .65rem;
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+
+        &:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+    }
+
+    & input[type="file"] { padding: .35rem; background: none; border-style: dashed; }
+    & .note { font-size: .8rem; color: var(--danger); }
+}
+
+.do {
+    margin: 1rem 0 0;
+
+    & button {
+        font: inherit;
+        font-weight: 550;
+        padding: .5rem 1.1rem;
+        border-radius: 8px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+
+        &:hover { filter: brightness(1.08); }
+    }
+}
+
+.aside { font-size: .875rem; color: var(--ink-soft); margin: 1rem 0 0; }
+
+.doing {
+    display: inline;
+
+    & button {
+        font: inherit;
+        font-size: .85rem;
+        padding: .3rem .55rem;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        background: none;
+        color: var(--ink-soft);
+        cursor: pointer;
+
+        &:hover { background: var(--accent-soft); color: var(--accent); }
+        &.danger { color: var(--danger); }
+        &.danger:hover { background: color-mix(in oklab, var(--danger) 12%, transparent); }
+    }
+}
+
+.drop { float: right; }
+
+/* -- what went wrong -------------------------------------------------------------------------------- */
+
+.problem {
+    border: 1px solid color-mix(in oklab, var(--danger) 45%, var(--line));
+    background: color-mix(in oklab, var(--danger) 8%, transparent);
+    border-radius: 8px;
+    padding: .6rem .8rem;
+    margin: 0 0 1rem;
+    color: var(--danger);
+    font-size: .9rem;
+
+    & p { margin: 0; }
+    & ul { margin: .4rem 0 0; padding-left: 1.1rem; }
+    & .detail { color: var(--ink-soft); font-size: .85rem; margin-top: .3rem; }
+}
+
+/* -- a profile --------------------------------------------------------------------------------------- */
+
+.profile {
+    & .who { display: flex; align-items: center; gap: 1rem; }
+    & .who h1 { margin: 0; }
+    & .role { margin: 0; color: var(--ink-faint); font-size: .875rem; }
+    & .own { list-style: none; margin: 0; padding: 0; }
+
+    & .own li {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: .45rem 0;
+        border-bottom: 1px solid var(--line);
+    }
+}
+
+/* -- the admin page ----------------------------------------------------------------------------------- */
+
+.admin table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .9rem;
+
+    & th {
+        text-align: left;
+        color: var(--ink-faint);
+        font-weight: 550;
+        border-bottom: 1px solid var(--line);
+        padding: .4rem .5rem;
+    }
+
+    & td { padding: .45rem .5rem; border-bottom: 1px solid var(--line); }
+}
+
+/* -- the odds and ends ---------------------------------------------------------------------------------- */
+
+.empty, .pending { color: var(--ink-faint); font-style: italic; }
+
+.no-photo, .no-tags, .no-note, .no-problem, .no-reasons, .not-mine, .not-admin { display: none; }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .board a, .board button { transition: background-color .12s ease, color .12s ease; }
+}

@@ -1,0 +1,182 @@
+// Every form on the board.
+//
+// **A form here is a real `<form method="post">` and works with no script on the page**, which is the
+// whole arrangement: the server answers a plain post with `303 See Other` and the next page, exactly
+// as it did before anybody wrote a browser program. What hydration adds is a submit handler, and that
+// handler only takes the submit where a sender was installed -- so the fallback is not a fallback at
+// all, it is what happens when nothing intercepts.
+//
+// **The values live in refs and not in state**, so typing does not re-render the page it is typed on.
+// A submit handler reads them at the moment it fires.
+
+import { createElement, Fragment, useContext, useRef, useState } from lath
+
+import { Nav, Post, Session } from "./context.sl"
+import { Field, Problem, Token, into } from "./parts.slx"
+
+// -- what a submit handler is ---------------------------------------------------------------------
+
+// `[note, onSubmit]` for a form posting `action`.
+//
+// `gather` answers the fields to send. `hold` answers `true` where this submit must be left to the
+// browser -- which is what a chosen file means: **slate has no way to read a file out of an input**,
+// so a form carrying one is posted by the browser as `multipart/form-data` and the page reloads.
+export useForm(action: string, gather: function, hold = null) -> array =
+    val session = useContext(Session)
+    val post = useContext(Post)
+    val [note, setNote] = useState(null)
+
+    async sent(e: object)
+        if post.send == null then return null
+        if hold != null && hold() then return null
+
+        e.prevent()
+        setNote(null)
+
+        var fields = gather()
+
+        fields["_csrf"] = session.csrf
+
+        val r = await post.send(action, fields)
+
+        if r.ok then return null
+
+        setNote(r.detail ?? "that did not work")
+
+    [note, sent]
+
+// -- signing in, and joining ------------------------------------------------------------------------
+
+// One form for both, because they differ in three words and in nothing else.
+export SignForm({ joining = false, detail = null, mismatch = [] }) =
+    val name = useRef("")
+    val password = useRef("")
+    val action = if joining then "/signup" else "/signin"
+
+    gather() = { name: name.current, password: password.current }
+
+    val form = useForm(action, gather)
+    val note = form[0]
+    val out = <form class="card sign" method="post" action={action} onSubmit={form[1]}>
+        <h1>{if joining then "Join the board" else "Sign in"}</h1>
+        <Problem detail={note ?? detail} mismatch={mismatch}/>
+        <Token/>
+        <Field name="name" label="Name" required autocomplete="username" onInput={into(name)}/>
+        <Field name="password" label="Password" kind="password" required
+               autocomplete={if joining then "new-password" else "current-password"}
+               onInput={into(password)}/>
+        <p class="do"><button type="submit">{if joining then "Join" else "Sign in"}</button></p>
+        <p class="aside">
+            {if joining then "Already here? " else "New here? "}
+            <a href={if joining then "/signin" else "/signup"}>
+                {if joining then "Sign in" else "Make an account"}
+            </a>
+        </p>
+    </form>
+
+    out
+
+// -- a new thread ---------------------------------------------------------------------------------
+
+export ThreadForm({ detail = null, mismatch = [] }) =
+    val title = useRef("")
+    val body = useRef("")
+    val tags = useRef("")
+    val photo = useRef("")
+
+    gather() = { title: title.current, body: body.current, tags: tags.current }
+
+    chose() -> boolean = photo.current != ""
+
+    val form = useForm("/threads", gather, chose)
+    val note = form[0]
+    val out = <form class="card compose" method="post" action="/threads"
+                    enctype="multipart/form-data" onSubmit={form[1]}>
+        <h1>Start a thread</h1>
+        <Problem detail={note ?? detail} mismatch={mismatch}/>
+        <Token/>
+        <Field name="title" label="Title" required placeholder="What is this about?"
+               onInput={into(title)}/>
+        <Field name="body" label="Post" lines={8} required onInput={into(body)}/>
+        <Field name="tags" label="Tags" placeholder="slate, sluice, lath" onInput={into(tags)}/>
+        <Field name="photo" label="Photo" kind="file" accept="image/*" onInput={into(photo)}/>
+        <p class="do"><button type="submit">Post it</button></p>
+    </form>
+
+    out
+
+// -- a reply --------------------------------------------------------------------------------------
+
+export ReplyForm({ thread = 0 }) =
+    val body = useRef("")
+    val photo = useRef("")
+    val action = "/threads/" + string(thread) + "/replies"
+
+    gather() = { body: body.current }
+
+    chose() -> boolean = photo.current != ""
+
+    val form = useForm(action, gather, chose)
+    val note = form[0]
+    val out = <form class="card reply-form" method="post" action={action}
+                    enctype="multipart/form-data" onSubmit={form[1]}>
+        <h2>Reply</h2>
+        <Problem detail={note}/>
+        <Token/>
+        <Field name="body" label="Say something" lines={5} required onInput={into(body)}/>
+        <Field name="photo" label="Photo" kind="file" accept="image/*" onInput={into(photo)}/>
+        <p class="do"><button type="submit">Post reply</button></p>
+    </form>
+
+    out
+
+// -- a picture of oneself ---------------------------------------------------------------------------
+
+// **This form never intercepts**, carrying nothing but a file. It is the plain post every form here
+// falls back to, written out once with nothing else in it.
+export AvatarForm(props: object) =
+    val out = <form class="card avatar-form" method="post" action="/profile/avatar"
+                    enctype="multipart/form-data">
+        <Token/>
+        <Field name="photo" label="Your picture" kind="file" accept="image/*" required/>
+        <p class="do"><button type="submit">Use this</button></p>
+    </form>
+
+    out
+
+// -- the one-button forms ---------------------------------------------------------------------------
+
+// A post with no fields: signing out, revoking a session, deleting a post, changing the theme.
+//
+// **A button and not a link, because it changes something.** A `GET` that changed a row would be
+// followed by every crawler and every link prefetcher there is.
+export Doing(props: object) =
+    val nav = useContext(Nav)
+    val action = props.action
+
+    // **Where to go afterwards travels in the form and not in `Referer`.** A handler that redirected
+    // to whatever a browser said the last page was would be an open redirect, and a header a client
+    // writes is exactly the wrong place to read a destination from; this is a path this program
+    // rendered, and the handler still checks that it is one.
+    gather() = { back: nav.url }
+
+    val form = useForm(action, gather)
+    val out = <form class={"doing " + (props.class ?? "")} method="post" action={action}
+                    onSubmit={form[1]}>
+        <Token/>
+        <input type="hidden" name="back" value={nav.url}/>
+        <button type="submit" class={props.tone ?? "plain"}>{props.label ?? "Do it"}</button>
+    </form>
+
+    out
+
+// The search box in the header. **A `GET` form, so a search is a URL somebody can send to somebody
+// else** -- and the one form here that changes nothing and therefore carries no token.
+export SearchForm({ q = "" }) =
+    val out = <form class="find" method="get" action="/" role="search">
+        <label class="visually-hidden" for="f-q">Search</label>
+        <input id="f-q" name="q" type="search" value={q} placeholder="Search threads"/>
+        <button type="submit">Search</button>
+    </form>
+
+    out
