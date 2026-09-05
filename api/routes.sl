@@ -537,7 +537,7 @@ async startedJson(store: object, req: object)
 // `/threads/nonsense` to the database would be a message from PostgreSQL about integer syntax arriving
 // as a 503, for a client that simply asked for a thread that is not there.
 idOf(text) -> integer | null
-    val n = integer(string(text ?? ""))
+    val n = number(string(text ?? ""))
 
     if n is integer && n > 0 then n else null
 

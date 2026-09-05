@@ -160,7 +160,7 @@ store(db: object) -> object
         val where = conditions(options)
         val order = orderNamed(options.sort ?? "newest")
         val size = bounded(options.size ?? 20, 1, 50)
-        val page = max(1, integer(options.page ?? 1) ?? 1)
+        val page = max(1, whole(options.page ?? 1, 1))
         val skip = (page - 1) * size
 
         val counted = await db.query("select count(*) as n from threads t" + where.joins + where.sql,
@@ -267,7 +267,9 @@ store(db: object) -> object
 
             if !put.ok then return refused(put)
 
-        thread(id)
+        // **A promise answered from an `async` function is not flattened**, so the awaiting
+        // caller would be handed the promise itself rather than the row.
+        await thread(id)
 
     // **The reply and the thread's two counters move in one transaction**, so a reader never sees a
     // reply that the list says is not there. `begin` and `commit` are SQL because they already are;
@@ -297,7 +299,7 @@ store(db: object) -> object
 
         if !done.ok then return refused(done)
 
-        reply(r.value.rows[0].id)
+        await reply(r.value.rows[0].id)
 
     async reply(id: integer)
         val r = await db.query("select " + ReplyColumns + " from replies r
@@ -418,10 +420,16 @@ first(rows: array) = if len(rows) == 0 then null else rows[0]
 withoutPassword(row: object) -> object =
     { id: row.id, name: row.name, role: row.role, avatar: row.avatar, made: row.made }
 
-bounded(n, low: integer, high: integer) -> integer =
-    val v = integer(n) ?? low
+bounded(n, low: integer, high: integer) -> integer = min(high, max(low, whole(n, low)))
 
-    min(high, max(low, v))
+// A whole number out of whatever a query string carried.
+//
+// **`integer` CONVERTS a number and `number` READS one out of text**, which is the pair to reach for
+// here: `integer("3")` faults, and everything in a query string is text.
+export whole(said, fallback: integer) -> integer
+    val n = if said is string then number(said) else said
+
+    if n is integer then n elif n is real then integer(n) else fallback
 
 escapedLike(s: string) -> string =
     replace(replace(replace(s, "\\", "\\\\"), "%", "\\%"), "_", "\\_")

@@ -84,9 +84,13 @@ export sessionStore(options: object = {}) -> object
 
     { get: get, set: set, delete: delete, live: live, revoke: revoke }
 
+// **A comparator answers whether the first value comes BEFORE the second**, which is a boolean and not
+// the sign of a subtraction -- the shape every other language takes.
 sortedByTime(xs: array) -> array
     val out = xs
 
-    out.sort((a, b) -> b.at - a.at)
+    out.sort(newerFirst)
 
     out
+
+newerFirst(a: object, b: object) -> boolean = a.at > b.at

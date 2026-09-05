@@ -1,0 +1,625 @@
+// Every route, driven with no database and no socket.
+//
+// **`await app.handle(request(…))` is the whole harness.** A request is a value and a handler is a
+// function of it, so what is tested here is the routes, the guards, the failure mapping and the
+// markup -- under the interpreter and under node alike, with nothing to start and nothing that can
+// flake under load.
+//
+// The store is `tests/store.sl`'s, over ordinary arrays. What that cannot say anything about is the
+// SQL, and `tests/postgres.sl` is that half.
+
+import { response } from sluice
+
+import { application } from "../api/routes.sl"
+import { sessionStore } from "../api/sessions.sl"
+import { board } from "./store.sl"
+import { client, doc, header, multipart, picture, shows, status, text, urlencoded, Edge,
+    Svg } from "./support.sl"
+
+val Secret = "a key this suite made up"
+
+// Two people and two threads, so that ordering, filtering and paging have something to do.
+seed() -> object =
+    { users: [{ id: 1, name: "ada", password: "supersecret", role: "admin", avatar: null, made: 1756900000 },
+              { id: 2, name: "grace", password: "alsosecret", role: "member", avatar: null, made: 1756900001 }],
+      threads: [{ id: 1, title: "Hello from slate", body: "a first post about slate", author: 1,
+                  photo: null, replies: 1, made: 1756900100, active: 1756900300, tags: ["slate"] },
+                { id: 2, title: "About sluice", body: "guards, all the way down", author: 2,
+                  photo: null, replies: 0, made: 1756900200, active: 1756900200, tags: ["sluice", "slate"] }],
+      replies: [{ id: 1, thread: 1, body: "welcome", author: 2, photo: null, made: 1756900300 }] }
+
+// The board, and something that drives it like a browser.
+made(options: object = {}) -> object
+    val store = board(seed())
+    val sessions = sessionStore({})
+    val app = application(store, sessions, options with { secret: Secret, sink: quiet })
+
+    { store: store, sessions: sessions, app: app, at: client(app) }
+
+quiet(r: object) = null
+
+// Signed in as somebody the seed knows, with the CSRF cookie already issued.
+async signedIn(it: object, name: string, password: string)
+    await it.at.get("/")
+
+    await it.at.form("/signin", { name: name, password: password })
+
+// -- the pages ---------------------------------------------------------------------------------------
+
+@test
+async THE_FRONT_PAGE_IS_MARKUP_A_READER_CAN_READ_WITH_NO_SCRIPT()
+    val it = made()
+    val reply = await it.at.get("/")
+
+    assertEq(status(reply), 200)
+    assert(contains(string(header(reply, "content-type")), "text/html"))
+    assert(shows(reply, "Hello from slate"), "the list names its threads")
+    assert(shows(reply, "<form class=\"find\" method=\"get\" action=\"/\""), "the search box is a real form")
+    assert(shows(reply, "href=\"/threads/1\""), "a thread is a real anchor")
+
+@test
+async THE_SAME_ROUTE_ANSWERS_THE_VALUES_THE_MARKUP_WAS_MADE_FROM()
+    val it = made()
+    val said = doc(await it.at.asJson("/"))
+
+    assertEq(said.url, "/")
+    assertEq(said.data.page, "list")
+    assertEq(said.data.threads.total, 2)
+    assertEq(said.user, null)
+    assert(said.csrf != "", "the token the next form has to carry travels with the page")
+
+@test
+async THE_SORT_THE_FILTER_AND_THE_SEARCH_ARE_READ_OFF_THE_QUERY_STRING()
+    val it = made()
+    val newest = doc(await it.at.asJson("/?sort=newest"))
+    val tagged = doc(await it.at.asJson("/?tag=sluice"))
+    val found = doc(await it.at.asJson("/?q=guards"))
+    val nonsense = doc(await it.at.asJson("/?sort=whatever"))
+
+    assertEq(newest.data.threads.rows[0].id, 2)
+    assertEq(tagged.data.threads.total, 1)
+    assertEq(tagged.data.threads.rows[0].title, "About sluice")
+    assertEq(found.data.threads.rows[0].id, 2)
+
+    // **A sort key is the one part of a query that cannot be a parameter**, so anything that is not
+    // one of the three is the first rather than an error or a statement.
+    assertEq(nonsense.data.sort, "newest")
+
+@test
+async A_PAGE_PAST_THE_LAST_ONE_IS_EMPTY_AND_STILL_SAYS_HOW_MANY_THERE_ARE()
+    val it = made()
+    val said = doc(await it.at.asJson("/?size=1&page=7"))
+
+    assertEq(len(said.data.threads.rows), 0)
+    assertEq(said.data.threads.total, 2)
+    assertEq(said.data.threads.page, 7)
+
+@test
+async A_THREAD_SHOWS_ITS_REPLIES_AND_THE_FORM_TO_ADD_ONE()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val reply = await it.at.get("/threads/1")
+
+    assertEq(status(reply), 200)
+    assert(shows(reply, "welcome"), "the reply that is there is on the page")
+    assert(shows(reply, "action=\"/threads/1/replies\""), "and so is the form for the next one")
+
+@test
+async A_THREAD_THAT_IS_NOT_THERE_IS_A_404_AND_STILL_A_PAGE()
+    val it = made()
+    val gone = await it.at.get("/threads/999")
+    val nonsense = await it.at.get("/threads/nonsense")
+    val nowhere = await it.at.get("/no/such/place")
+
+    assertEq(status(gone), 404)
+    assertEq(status(nonsense), 404)
+    assertEq(status(nowhere), 404)
+    assert(shows(nowhere, "Nothing at /no/such/place"), "a 404 is something a person can read")
+
+// -- joining, and signing in -----------------------------------------------------------------------
+
+@test
+async SIGNING_UP_STARTS_A_SESSION_AND_SENDS_THE_BROWSER_SOMEWHERE_ELSE()
+    val it = made()
+
+    await it.at.get("/signup")
+
+    val made_ = await it.at.form("/signup", { name: "hopper", password: "longenough" })
+
+    // **`303 See Other` and not `200`**, which is what stops a reload posting the same thing again.
+    assertEq(status(made_), 303)
+    assertEq(header(made_, "location"), "/")
+
+    val said = doc(await it.at.asJson("/"))
+
+    assertEq(said.user.name, "hopper")
+    assertEq(said.user.role, "member")
+
+@test
+async A_NAME_SOMEBODY_ELSE_HAS_IS_A_409()
+    val it = made()
+
+    await it.at.get("/signup")
+
+    val again = await it.at.form("/signup", { name: "ada", password: "longenough" })
+
+    assertEq(status(again), 409)
+    assertEq(doc(again).status, 409)
+
+@test
+async A_FORM_THAT_DOES_NOT_FIT_ITS_DECLARATION_IS_A_400_LISTING_EVERY_REASON()
+    val it = made()
+
+    await it.at.get("/signup")
+
+    val bad = await it.at.post("/signup", {})
+    val said = doc(bad)
+
+    assertEq(status(bad), 400)
+    assertEq(said.title, "Bad Request")
+    assertEq(len(said.mismatch), 2)
+    assertEq(said.mismatch[0].path, "name")
+    assertEq(said.mismatch[1].path, "password")
+
+@test
+async A_CHECK_A_SHAPE_CANNOT_MAKE_IS_STILL_A_400()
+    val it = made()
+
+    await it.at.get("/signup")
+
+    val short = await it.at.post("/signup", { name: "x", password: "longenough" })
+
+    assertEq(status(short), 400)
+    assert(contains(doc(short).detail, "2 and 30"))
+
+@test
+async A_NAME_AND_A_PASSWORD_THAT_DO_NOT_GO_TOGETHER_ARE_ONE_ANSWER()
+    val it = made()
+
+    await it.at.get("/signin")
+
+    val wrong = await it.at.post("/signin", { name: "ada", password: "notit" })
+    val nobody = await it.at.post("/signin", { name: "nobody", password: "notit" })
+
+    assertEq(status(wrong), 401)
+    assertEq(status(nobody), 401)
+
+    // **One sentence for both**, because telling them apart hands somebody a way to find out which
+    // names exist.
+    assertEq(doc(wrong).detail, doc(nobody).detail)
+
+@test
+async SIGNING_OUT_ENDS_THE_SESSION()
+    val it = made()
+
+    await signedIn(it, "ada", "supersecret")
+
+    assertEq(doc(await it.at.asJson("/")).user.name, "ada")
+
+    await it.at.form("/signout", { back: "/" })
+
+    assertEq(doc(await it.at.asJson("/")).user, null)
+
+// -- the token --------------------------------------------------------------------------------------
+
+@test
+async A_FORM_WITH_NO_TOKEN_IS_A_403()
+    val it = made()
+
+    await it.at.get("/signin")
+
+    val naked = await it.app.handle({ method: "POST",
+                                      path: "/signin",
+                                      search: "",
+                                      headers: { "content-type": "application/json" },
+                                      query: {},
+                                      cookies: it.at.cookies(),
+                                      params: {},
+                                      keepAlive: true,
+                                      upgrade: false,
+                                      body: toJSON({ name: "ada", password: "supersecret" }) })
+
+    assertEq(status(naked), 403)
+
+@test
+async A_FORM_WITH_SOMEBODY_ELSE_S_TOKEN_IS_A_403()
+    val it = made()
+
+    await it.at.get("/signin")
+
+    // **The cookie is left alone and the FIELD is forged**, which is the shape the attack has: a form
+    // posted from another site carries the cookie -- browsers send those -- and cannot read it.
+    val forged = await it.at.sent("POST", "/signin",
+        { headers: { "content-type": "application/json" },
+          query: { format: "json" },
+          body: toJSON({ name: "ada", password: "supersecret", _csrf: "a token from somewhere else" }) })
+
+    assertEq(status(forged), 403)
+    assert(contains(doc(forged).detail, "does not match"))
+
+@test
+async THE_TOKEN_IS_MINTED_BEFORE_THE_PAGE_IS_RENDERED_SO_THE_FIRST_FORM_CARRIES_IT()
+    val it = made()
+    val first = await it.at.get("/signin")
+
+    // **This is the difference from a token issued on the way out.** A page rendered before the
+    // cookie existed would carry an empty field, and the first form anybody met would be refused.
+    assert(shows(first, "name=\"_csrf\" value=\"" + it.at.token() + "\""), "the field holds the cookie")
+    assert(it.at.token() != "", "and the cookie was issued with the page that needs it")
+
+// -- posting ------------------------------------------------------------------------------------------
+
+@test
+async POSTING_A_THREAD_ASKS_FOR_A_SESSION()
+    val it = made()
+
+    await it.at.get("/new")
+
+    val refused = await it.at.form("/threads", { title: "hello", body: "there", tags: "" })
+
+    assertEq(status(refused), 401)
+
+@test
+async A_THREAD_IS_POSTED_WITH_ITS_TAGS_AND_APPEARS_ON_THE_LIST()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val made_ = await it.at.form("/threads", { title: "lath renders twice",
+                                               body: "server and browser",
+                                               tags: "Lath, lath, slate,  , one, two, three, four" })
+
+    assertEq(status(made_), 303)
+    assertEq(header(made_, "location"), "/threads/3")
+
+    val said = doc(await it.at.asJson("/threads/3"))
+
+    // **Lower case, without repeats, and at most five**, because a tag is a filter and two spellings
+    // of one word are two filters that each find half the threads.
+    assertEq(said.data.thread.tags, ["lath", "slate", "one", "two", "three"])
+    assertEq(said.data.thread.author_name, "grace")
+
+@test
+async A_THREAD_WITH_NOTHING_IN_IT_IS_REFUSED()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val empty = await it.at.post("/threads", { title: "   ", body: "  ", tags: "" })
+
+    assertEq(status(empty), 400)
+
+@test
+async A_REPLY_IS_POSTED_AND_THE_THREAD_COUNTS_IT()
+    val it = made()
+
+    await signedIn(it, "ada", "supersecret")
+
+    val said_ = await it.at.form("/threads/1/replies", { body: "and hello back" })
+
+    assertEq(status(said_), 303)
+
+    val said = doc(await it.at.asJson("/threads/1"))
+
+    assertEq(len(said.data.replies), 2)
+    assertEq(said.data.replies[1].body, "and hello back")
+    assertEq(said.data.thread.replies, 2)
+
+// -- the live thread -------------------------------------------------------------------------------
+
+@test
+async A_REPLY_IS_PUBLISHED_TO_WHOEVER_IS_READING_THE_THREAD()
+    val it = made()
+
+    await signedIn(it, "ada", "supersecret")
+
+    // **Subscribed before the reply is posted**, which is what a browser reading a thread has done.
+    val stream = await it.at.get("/threads/1/events")
+    val source = response(stream).body
+
+    assertEq(status(stream), 200)
+    assert(contains(string(header(stream, "content-type")), "text/event-stream"))
+
+    await it.at.form("/threads/1/replies", { body: "live from the hub" })
+
+    val piece = await source.next()
+
+    assert(!piece.done, "the stream had something to say")
+    assert(contains(piece.value, "event: reply"), "and it says what happened")
+    assert(contains(piece.value, "live from the hub"), "and carries the reply itself")
+
+    source.close()
+
+@test
+async A_READER_THAT_COMES_BACK_IS_HANDED_WHAT_IT_MISSED()
+    val it = made()
+
+    await signedIn(it, "ada", "supersecret")
+
+    await it.at.form("/threads/1/replies", { body: "the one that was missed" })
+
+    // **`Last-Event-ID` is what a browser sends on its own**, and `lastEventId` reads it -- so a
+    // client that reconnects is handed what came after that id before anything live.
+    val again = await it.app.handle({ method: "GET",
+                                      path: "/threads/1/events",
+                                      search: "",
+                                      headers: { "last-event-id": "0" },
+                                      query: {},
+                                      cookies: {},
+                                      params: {},
+                                      keepAlive: true,
+                                      upgrade: false })
+    val source = response(again).body
+    val piece = await source.next()
+
+    assert(contains(piece.value, "the one that was missed"), "the replay carries what was published")
+    assert(contains(piece.value, "id: 1"), "and the id a client would come back with")
+
+    source.close()
+
+// -- photos ---------------------------------------------------------------------------------------
+
+@test
+async A_PHOTO_IS_KEPT_UNDER_THE_POST_AND_SHOWN_ON_IT()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val made_ = await it.at.upload("/threads",
+        { title: "a picture", body: "of a square", tags: "art" }, picture("square.svg"))
+
+    assertEq(status(made_), 303)
+
+    val said = doc(await it.at.asJson("/threads/3"))
+
+    assertEq(said.data.thread.photo, "threads/3/square.svg")
+
+    val page = await it.at.get("/threads/3")
+
+    assert(shows(page, "src=\"/uploads/threads/3/square.svg\""), "and the page shows it")
+
+@test
+async A_FILENAME_IS_ONE_THIS_PROGRAM_MADE_AND_NOT_ONE_A_CLIENT_SENT()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    await it.at.upload("/threads", { title: "climbing out", body: "or trying to", tags: "" },
+        picture("../../etc/passwd"))
+
+    val said = doc(await it.at.asJson("/threads/3"))
+
+    // **Everything that is not a letter, a digit, a dot, a dash or an underscore becomes a dash**,
+    // which takes the whole class of path mistakes away rather than looking for the ones already
+    // known -- and the leading dots go with it.
+    assertEq(said.data.thread.photo, "threads/3/etc-passwd")
+
+@test
+async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_A_415()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val refused = await it.at.upload("/threads", { title: "a program", body: "not a picture", tags: "" },
+        { field: "photo", filename: "run.sh", type: "text/x-shellscript", content: "rm -rf /" })
+
+    assertEq(status(refused), 415)
+
+@test
+async A_PHOTO_OVER_THE_LIMIT_IS_A_413()
+    val it = made({ photoLimit: 64 })
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val refused = await it.at.upload("/threads", { title: "too big", body: "much too big", tags: "" },
+        picture("big.svg"))
+
+    assertEq(status(refused), 413)
+
+// -- taking things away -------------------------------------------------------------------------------
+
+@test
+async A_MEMBER_MAY_DELETE_THEIR_OWN_REPLY_AND_NOT_SOMEBODY_ELSE_S()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val mine = await it.at.form("/replies/1/delete", { back: "/threads/1" })
+
+    assertEq(status(mine), 303)
+    assertEq(len(doc(await it.at.asJson("/threads/1")).data.replies), 0)
+
+    await it.at.form("/threads/1/replies", { body: "grace again" })
+    await it.at.form("/signout", { back: "/" })
+    await it.at.form("/signin", { name: "ada", password: "supersecret" })
+
+    // An administrator may delete anybody's.
+    assertEq(status(await it.at.form("/replies/2/delete", { back: "/threads/1" })), 303)
+
+@test
+async DELETING_A_THREAD_IS_AN_ADMINISTRATOR_S()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    assertEq(status(await it.at.form("/threads/1/delete", { back: "/" })), 403)
+
+    await it.at.form("/signout", { back: "/" })
+    await it.at.form("/signin", { name: "ada", password: "supersecret" })
+
+    assertEq(status(await it.at.form("/threads/1/delete", { back: "/" })), 303)
+    assertEq(doc(await it.at.asJson("/")).data.threads.total, 1)
+
+// -- the admin page -----------------------------------------------------------------------------------
+
+@test
+async THE_ADMIN_PAGE_IS_A_403_PAGE_FOR_EVERYBODY_ELSE()
+    val it = made()
+    val visitor = await it.at.get("/admin")
+
+    assertEq(status(visitor), 403)
+    assert(shows(visitor, "for administrators"), "and says so in words")
+
+    await signedIn(it, "ada", "supersecret")
+
+    assertEq(status(await it.at.get("/admin")), 200)
+
+@test
+async AN_ADMINISTRATOR_SEES_WHO_IS_SIGNED_IN_AND_CAN_END_IT()
+    val it = made()
+    val other = made()
+
+    await signedIn(it, "ada", "supersecret")
+
+    val said = doc(await it.at.asJson("/admin"))
+
+    assertEq(len(said.data.users), 2)
+    assertEq(len(said.data.sessions), 1)
+    assertEq(said.data.sessions[0].name, "ada")
+
+    // **Revoking is the thing a signed cookie cannot do at all**, and it is the whole argument for a
+    // store: the entry is deleted, and the very next request from that browser is nobody.
+    val gone = await it.at.form("/admin/sessions/" + said.data.sessions[0].id + "/revoke", { back: "/admin" })
+
+    assertEq(status(gone), 303)
+    assertEq(doc(await it.at.asJson("/")).user, null)
+
+// -- the theme ------------------------------------------------------------------------------------------
+
+@test
+async THE_THEME_IS_A_COOKIE_THE_SERVER_ALREADY_KNOWS_WHEN_IT_RENDERS()
+    val it = made()
+    val first = await it.at.get("/")
+
+    assert(shows(first, "class=\"board light\""))
+
+    await it.at.form("/theme", { back: "/" })
+
+    val dark = await it.at.get("/")
+
+    assert(shows(dark, "class=\"board dark\""), "and the markup carries it, so nothing flashes white")
+    assert(shows(dark, "<html lang=\"en\" class=\"dark\">"), "on the document too")
+
+// -- where a form says to go back to ------------------------------------------------------------------
+
+@test
+async A_DESTINATION_OUT_OF_A_REQUEST_IS_CHECKED_AND_NOT_TRUSTED()
+    val it = made()
+
+    await signedIn(it, "grace", "alsosecret")
+
+    val away = await it.at.form("/signout", { back: "//elsewhere.example/steal" })
+
+    // `//elsewhere.example` is another origin written the short way, which is the shape an open
+    // redirect takes.
+    assertEq(header(away, "location"), "/")
+
+// -- staying up -----------------------------------------------------------------------------------------
+
+@test
+async THE_HEALTH_CHECK_ASKS_THE_STORE_AND_NOT_A_FLAG_IN_THIS_PROCESS()
+    val it = made()
+
+    assertEq(status(await it.at.get("/health")), 200)
+
+    it.store.unwell(true)
+
+    val ill = await it.at.get("/health")
+
+    assertEq(status(ill), 503)
+    assert(contains(doc(ill).reasons[0], "not answering"), "and says which of the things it is")
+
+@test
+async A_STORE_THAT_IS_DOWN_IS_A_503_PROBLEM_DOCUMENT_AND_NOT_A_FAULT()
+    val it = made()
+
+    it.store.unwell(true)
+
+    val ill = await it.at.asJson("/")
+
+    assertEq(status(ill), 503)
+    assertEq(doc(ill).title, "Service Unavailable")
+
+@test
+async TOO_MANY_WRITES_A_MINUTE_ARE_429_WITH_A_RETRY_AFTER()
+    val it = made({ postLimit: 2 })
+
+    await it.at.get("/signin")
+    await it.at.post("/signin", { name: "ada", password: "wrong" })
+    await it.at.post("/signin", { name: "ada", password: "wrong" })
+
+    val over = await it.at.post("/signin", { name: "ada", password: "wrong" })
+
+    assertEq(status(over), 429)
+    assert(header(over, "retry-after") != null, "and says how long to wait")
+    assertEq(string(header(over, "x-ratelimit-limit")), "2")
+
+// -- the JSON API ----------------------------------------------------------------------------------------
+
+@test
+async THE_JSON_API_ANSWERS_ROWS_AND_PROBLEM_DOCUMENTS()
+    val it = made()
+    val listed = await it.at.get("/api/threads")
+
+    assertEq(status(listed), 200)
+    assertEq(doc(listed).total, 2)
+
+    val one = await it.at.get("/api/threads/1")
+
+    assertEq(len(doc(one).replies), 1)
+
+    val gone = await it.at.get("/api/threads/999")
+
+    assertEq(status(gone), 404)
+    assertEq(doc(gone).title, "Not Found")
+    assert(contains(string(header(gone, "content-type")), "application/problem+json"))
+
+@test
+async THE_POLL_A_PAGE_MAKES_ASKS_ONLY_FOR_WHAT_IT_HAS_NOT_SEEN()
+    val it = made()
+
+    await signedIn(it, "ada", "supersecret")
+    await it.at.form("/threads/1/replies", { body: "the new one" })
+
+    val fresh = doc(await it.at.get("/api/threads/1/replies?after=1"))
+
+    assertEq(len(fresh.replies), 1)
+    assertEq(fresh.replies[0].body, "the new one")
+
+@test
+async THE_JSON_API_TAKES_ITS_TOKEN_IN_A_HEADER_BECAUSE_A_CLIENT_LIBRARY_CAN_SET_ONE()
+    val it = made()
+
+    await signedIn(it, "ada", "supersecret")
+
+    val made_ = await it.app.handle({ method: "POST",
+                                      path: "/api/threads",
+                                      search: "",
+                                      headers: { "content-type": "application/json",
+                                                 "x-csrf-token": it.at.token() },
+                                      query: {},
+                                      cookies: it.at.cookies(),
+                                      params: {},
+                                      keepAlive: true,
+                                      upgrade: false,
+                                      body: toJSON({ title: "over the api", body: "with a header",
+                                                     tags: "api" }) })
+
+    assertEq(status(made_), 201)
+    assertEq(doc(made_).title, "over the api")
+
+// -- what a person sees while a page is on the way ---------------------------------------------------------
+
+@test
+async THE_PAGE_CARRIES_THE_STATE_THE_BROWSER_HYDRATES_AGAINST()
+    val it = made()
+    val page = await it.at.get("/?tag=slate")
+
+    assert(shows(page, "<script type=\"application/json\" id=\"board-state\">"))
+    assert(shows(page, "<script src=\"/assets/app.js\" defer>"))
+
+    // **A `<` inside the state is written as an escape**, which is the one thing that can end a
+    // `<script>` early: a post holding `</script>` in its text would close the element.
+    assert(!contains(text(page), "\"body\":\"<"), "nothing in the state carries a raw <")

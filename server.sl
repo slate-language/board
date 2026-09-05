@@ -45,7 +45,7 @@ async main()
     val sessions = sessionStore({})
     val app = application(store, sessions, { secret: secret(), sink: said })
 
-    val port = integer(env("PORT") ?? "0") ?? 0
+    val port = portOf(env("PORT") ?? "0")
     val server = serve(port, app)
     val site = "http://127.0.0.1:" + string(localPort(server))
 
@@ -58,6 +58,13 @@ async main()
 
     for r in app.routes()
         print(r.method, r.path, r.guards)
+
+// **`integer` CONVERTS a number and `number` READS one out of text**, and an environment
+// variable is text -- `integer("8080")` faults.
+portOf(said: string) -> integer
+    val n = number(said)
+
+    if n is integer && n >= 0 then n else 0
 
 async stopping(app: object, server, store: object)
     val drained = await app.drain(server, { grace: 10000 })
