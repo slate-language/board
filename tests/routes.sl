@@ -42,6 +42,39 @@ made(options: object = {}) -> object
 
 quiet(r: object) = null
 
+// -- what stands around every test in this file --------------------------------------------------------
+
+// **`it` is a whole board and a browser driving it, made fresh for every test.** Nothing here is
+// shared between two tests on purpose: a session, a rate-limit counter and a thread id are all
+// per-board state, so a suite that opened one board would have its tests reading each other's rows.
+// A test wanting a board built differently says so by assigning to `it` itself.
+var it = null
+
+// The event streams a test subscribed to, and the photos it wrote.
+//
+// **Both are closed and swept by `@teardown` rather than by the test that made them**, which is the
+// whole reason the hooks are here: a teardown runs however the test went, so an assertion that fails
+// above the tidying still gives back the socket-less stream holding the loop open and still takes the
+// file off the disk. Written at the end of a test body, neither happens on the run that needs it.
+var streams = []
+var wrote = []
+
+@setup
+freshBoard()
+    it = made()
+    streams = []
+    wrote = []
+
+@teardown
+async tidy()
+    for source in streams
+        source.close()
+
+    for name in wrote
+        await swept(name)
+
+    null
+
 // The name of a picture nobody ever posted, shaped exactly as one this board hands out.
 never() -> string = nameOf(toBytes("a photograph nobody took"), "png")
 
@@ -57,16 +90,23 @@ slow(store: object) -> object
     store with { threads: late }
 
 // Signed in as somebody the seed knows, with the CSRF cookie already issued.
-async signedIn(it: object, name: string, password: string)
+async signedIn(name: string, password: string)
     await it.at.get("/")
 
     await it.at.form("/signin", { name: name, password: password })
+
+// The body of a streamed answer, remembered so that the teardown closes it.
+streaming(reply) -> object
+    val source = response(reply).body
+
+    push(streams, source)
+
+    source
 
 // -- the pages ---------------------------------------------------------------------------------------
 
 @test
 async THE_FRONT_PAGE_IS_MARKUP_A_READER_CAN_READ_WITH_NO_SCRIPT()
-    val it = made()
     val reply = await it.at.get("/")
 
     assertEq(status(reply), 200)
@@ -78,7 +118,6 @@ async THE_FRONT_PAGE_IS_MARKUP_A_READER_CAN_READ_WITH_NO_SCRIPT()
 
 @test
 async THE_SAME_ROUTE_ANSWERS_THE_VALUES_THE_MARKUP_WAS_MADE_FROM()
-    val it = made()
     val said = doc(await it.at.asJson("/"))
 
     assertEq(said.url, "/")
@@ -89,7 +128,6 @@ async THE_SAME_ROUTE_ANSWERS_THE_VALUES_THE_MARKUP_WAS_MADE_FROM()
 
 @test
 async THE_SORT_THE_FILTER_AND_THE_SEARCH_ARE_READ_OFF_THE_QUERY_STRING()
-    val it = made()
     val newest = doc(await it.at.asJson("/?sort=newest"))
     val tagged = doc(await it.at.asJson("/?tag=sluice"))
     val found = doc(await it.at.asJson("/?q=guards"))
@@ -106,7 +144,6 @@ async THE_SORT_THE_FILTER_AND_THE_SEARCH_ARE_READ_OFF_THE_QUERY_STRING()
 
 @test
 async A_PAGE_PAST_THE_LAST_ONE_IS_EMPTY_AND_STILL_SAYS_HOW_MANY_THERE_ARE()
-    val it = made()
     val said = doc(await it.at.asJson("/?size=1&page=7"))
 
     assertEq(len(said.data.threads.rows), 0)
@@ -115,9 +152,7 @@ async A_PAGE_PAST_THE_LAST_ONE_IS_EMPTY_AND_STILL_SAYS_HOW_MANY_THERE_ARE()
 
 @test
 async A_THREAD_SHOWS_ITS_REPLIES_AND_THE_FORM_TO_ADD_ONE()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val reply = await it.at.get("/threads/1")
 
@@ -127,7 +162,6 @@ async A_THREAD_SHOWS_ITS_REPLIES_AND_THE_FORM_TO_ADD_ONE()
 
 @test
 async A_THREAD_THAT_IS_NOT_THERE_IS_A_404_AND_STILL_A_PAGE()
-    val it = made()
     val gone = await it.at.get("/threads/999")
     val nonsense = await it.at.get("/threads/nonsense")
     val nowhere = await it.at.get("/no/such/place")
@@ -144,9 +178,7 @@ async THE_COMPOSER_IS_AN_EMPTY_CONTAINER_AND_EVERYTHING_IT_NEEDS_TO_BUILD_ITSELF
     // **A form with nothing in it yet is markup worth nothing**, so the composer is sent as the
     // document, the state and the script and the browser builds it. Everything else on the board
     // carries rows or a validation error and is rendered here.
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val reply = await it.at.get("/new")
 
@@ -166,9 +198,7 @@ async A_REFUSED_POST_TO_A_CLIENT_ONLY_PAGE_STILL_CARRIES_WHY()
     // **The reason travels in the state rather than in the markup**, which is what keeps a `400`
     // readable on a page the server did not render: the browser mounts the composer and `Problem`
     // renders what is in the record.
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val refused = await it.at.form("/threads", { title: "", body: "", tags: "" })
 
@@ -180,8 +210,6 @@ async A_REFUSED_POST_TO_A_CLIENT_ONLY_PAGE_STILL_CARRIES_WHY()
 async EVERY_OTHER_PAGE_IS_MARKUP_BEFORE_IT_IS_A_SCRIPT()
     // **The control.** Without it the assertion above could be about a shell that is empty for every
     // page, which is a board with no server rendering at all rather than one deliberate exception.
-    val it = made()
-
     for where in ["/", "/threads/1", "/signin", "/signup", "/people/ada", "/no/such/place"]
         val reply = await it.at.get(where)
 
@@ -191,8 +219,6 @@ async EVERY_OTHER_PAGE_IS_MARKUP_BEFORE_IT_IS_A_SCRIPT()
 
 @test
 async SIGNING_UP_STARTS_A_SESSION_AND_SENDS_THE_BROWSER_SOMEWHERE_ELSE()
-    val it = made()
-
     await it.at.get("/signup")
 
     val made_ = await it.at.form("/signup", { name: "hopper", password: "longenough" })
@@ -208,8 +234,6 @@ async SIGNING_UP_STARTS_A_SESSION_AND_SENDS_THE_BROWSER_SOMEWHERE_ELSE()
 
 @test
 async A_NAME_SOMEBODY_ELSE_HAS_IS_A_409()
-    val it = made()
-
     await it.at.get("/signup")
 
     val again = await it.at.form("/signup", { name: "ada", password: "longenough" })
@@ -219,8 +243,6 @@ async A_NAME_SOMEBODY_ELSE_HAS_IS_A_409()
 
 @test
 async A_FORM_THAT_DOES_NOT_FIT_ITS_DECLARATION_IS_A_400_LISTING_EVERY_REASON()
-    val it = made()
-
     await it.at.get("/signup")
 
     val bad = await it.at.post("/signup", {})
@@ -234,8 +256,6 @@ async A_FORM_THAT_DOES_NOT_FIT_ITS_DECLARATION_IS_A_400_LISTING_EVERY_REASON()
 
 @test
 async A_CHECK_A_SHAPE_CANNOT_MAKE_IS_STILL_A_400()
-    val it = made()
-
     await it.at.get("/signup")
 
     val short = await it.at.post("/signup", { name: "x", password: "longenough" })
@@ -245,8 +265,6 @@ async A_CHECK_A_SHAPE_CANNOT_MAKE_IS_STILL_A_400()
 
 @test
 async A_NAME_AND_A_PASSWORD_THAT_DO_NOT_GO_TOGETHER_ARE_ONE_ANSWER()
-    val it = made()
-
     await it.at.get("/signin")
 
     val wrong = await it.at.post("/signin", { name: "ada", password: "notit" })
@@ -261,9 +279,7 @@ async A_NAME_AND_A_PASSWORD_THAT_DO_NOT_GO_TOGETHER_ARE_ONE_ANSWER()
 
 @test
 async SIGNING_OUT_ENDS_THE_SESSION()
-    val it = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     assertEq(doc(await it.at.asJson("/")).user.name, "ada")
 
@@ -282,8 +298,6 @@ async SIGNING_OUT_ENDS_THE_SESSION()
 
 @test
 async A_FORM_WITH_NO_TOKEN_IS_A_403()
-    val it = made()
-
     await it.at.get("/signin")
 
     val naked = await it.app.handle({ method: "POST",
@@ -301,8 +315,6 @@ async A_FORM_WITH_NO_TOKEN_IS_A_403()
 
 @test
 async A_FORM_WITH_SOMEBODY_ELSE_S_TOKEN_IS_A_403()
-    val it = made()
-
     await it.at.get("/signin")
 
     // **The cookie is left alone and the FIELD is forged**, which is the shape the attack has: a form
@@ -317,7 +329,6 @@ async A_FORM_WITH_SOMEBODY_ELSE_S_TOKEN_IS_A_403()
 
 @test
 async THE_TOKEN_IS_MINTED_BEFORE_THE_PAGE_IS_RENDERED_SO_THE_FIRST_FORM_CARRIES_IT()
-    val it = made()
     val first = await it.at.get("/signin")
 
     // **This is the difference from a token issued on the way out.** A page rendered before the
@@ -329,8 +340,6 @@ async THE_TOKEN_IS_MINTED_BEFORE_THE_PAGE_IS_RENDERED_SO_THE_FIRST_FORM_CARRIES_
 
 @test
 async POSTING_A_THREAD_ASKS_FOR_A_SESSION()
-    val it = made()
-
     await it.at.get("/new")
 
     val refused = await it.at.form("/threads", { title: "hello", body: "there", tags: "" })
@@ -339,9 +348,7 @@ async POSTING_A_THREAD_ASKS_FOR_A_SESSION()
 
 @test
 async A_THREAD_IS_POSTED_WITH_ITS_TAGS_AND_APPEARS_ON_THE_LIST()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val made_ = await it.at.form("/threads", { title: "lath renders twice",
                                                body: "server and browser",
@@ -359,9 +366,7 @@ async A_THREAD_IS_POSTED_WITH_ITS_TAGS_AND_APPEARS_ON_THE_LIST()
 
 @test
 async A_THREAD_WITH_NOTHING_IN_IT_IS_REFUSED()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val empty = await it.at.post("/threads", { title: "   ", body: "  ", tags: "" })
 
@@ -369,9 +374,7 @@ async A_THREAD_WITH_NOTHING_IN_IT_IS_REFUSED()
 
 @test
 async A_REPLY_IS_POSTED_AND_THE_THREAD_COUNTS_IT()
-    val it = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     val said_ = await it.at.form("/threads/1/replies", { body: "and hello back" })
 
@@ -387,13 +390,11 @@ async A_REPLY_IS_POSTED_AND_THE_THREAD_COUNTS_IT()
 
 @test
 async A_REPLY_IS_PUBLISHED_TO_WHOEVER_IS_READING_THE_THREAD()
-    val it = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     // **Subscribed before the reply is posted**, which is what a browser reading a thread has done.
     val stream = await it.at.get("/threads/1/events")
-    val source = response(stream).body
+    val source = streaming(stream)
 
     assertEq(status(stream), 200)
     assert(contains(string(header(stream, "content-type")), "text/event-stream"))
@@ -406,13 +407,9 @@ async A_REPLY_IS_PUBLISHED_TO_WHOEVER_IS_READING_THE_THREAD()
     assert(contains(piece.value, "event: reply"), "and it says what happened")
     assert(contains(piece.value, "live from the hub"), "and carries the reply itself")
 
-    source.close()
-
 @test
 async A_READER_THAT_COMES_BACK_IS_HANDED_WHAT_IT_MISSED()
-    val it = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     await it.at.form("/threads/1/replies", { body: "the one that was missed" })
 
@@ -427,21 +424,19 @@ async A_READER_THAT_COMES_BACK_IS_HANDED_WHAT_IT_MISSED()
                                       params: {},
                                       keepAlive: true,
                                       upgrade: false })
-    val source = response(again).body
+    val source = streaming(again)
     val piece = await source.next()
 
     assert(contains(piece.value, "the one that was missed"), "the replay carries what was published")
     assert(contains(piece.value, "id: 1"), "and the id a client would come back with")
 
-    source.close()
-
 // -- photos ---------------------------------------------------------------------------------------
 
 @test
 async A_PHOTO_IS_KEPT_UNDER_THE_POST_AND_SHOWN_ON_IT()
-    val it = made()
+    await signedIn("grace", "alsosecret")
 
-    await signedIn(it, "grace", "alsosecret")
+    push(wrote, PngName)
 
     val made_ = await it.at.upload("/threads",
         { title: "a picture", body: "of a square", tags: "art" }, picture("square.png"))
@@ -458,13 +453,11 @@ async A_PHOTO_IS_KEPT_UNDER_THE_POST_AND_SHOWN_ON_IT()
     // address is the file somebody posted.
     assert(shows(page, "src=\"/uploads/" + PngName + "?display\""), "and the page shows it")
 
-    await swept(PngName)
-
 @test
 async A_PHOTO_IS_NAMED_BY_ITS_CONTENT_AND_NEVER_BY_WHAT_A_CLIENT_SENT()
-    val it = made()
+    await signedIn("grace", "alsosecret")
 
-    await signedIn(it, "grace", "alsosecret")
+    push(wrote, PngName)
 
     // **The name a client sent never reaches the filesystem at all.** `../../etc/passwd` is the
     // shape every file server has been caught by, and here it is not defended against: the file is
@@ -484,13 +477,11 @@ async A_PHOTO_IS_NAMED_BY_ITS_CONTENT_AND_NEVER_BY_WHAT_A_CLIENT_SENT()
 
     assertEq(again.data.thread.photo, PngName)
 
-    await swept(PngName)
-
 @test
 async A_PHOTO_IS_SERVED_BACK_AS_THE_BYTES_THAT_WERE_POSTED()
-    val it = made()
+    await signedIn("grace", "alsosecret")
 
-    await signedIn(it, "grace", "alsosecret")
+    push(wrote, PngName)
 
     await it.at.upload("/threads", { title: "a picture", body: "of a square", tags: "" },
         picture("square.png"))
@@ -510,12 +501,8 @@ async A_PHOTO_IS_SERVED_BACK_AS_THE_BYTES_THAT_WERE_POSTED()
 
     assertEq(status(back), 304)
 
-    await swept(PngName)
-
 @test
 async A_NAME_THIS_BOARD_NEVER_HANDED_OUT_IS_A_404_AND_NOT_A_READ()
-    val it = made()
-
     // Both are 404: one is not a name this board could ever have handed out, and the other is
     // exactly the shape of one and belongs to a picture nobody posted.
     assertEq(status(await it.at.get("/uploads/nonsense.png")), 404)
@@ -528,8 +515,6 @@ async A_PATH_WRITTEN_INTO_A_PHOTO_S_NAME_IS_A_404_HOWEVER_IT_IS_SPELLED()
     // where a C library reading it would stop. **None of them is a case anybody had to think of** --
     // a name is 43 base64url characters, one dot and one of four extensions, which has no room for a
     // slash, a dot pair or a NUL, so one sentence refuses all three before the disk is touched.
-    val it = made()
-
     for where in ["/uploads/%2e%2e%2fserver.sl", "/uploads/../x", "/uploads/a%00.png"]
         assertEq(status(await it.at.get(where)), 404, where + " is not a photo")
 
@@ -538,9 +523,9 @@ async A_WEBP_IS_A_PICTURE_THIS_BOARD_TAKES()
     // **What a browser re-encoding a photograph before uploading it usually writes**, and the one
     // format of the four that is not `stb_image`'s. It is taken on every host: keeping the original
     // is a write and not a decode.
-    val it = made()
+    await signedIn("grace", "alsosecret")
 
-    await signedIn(it, "grace", "alsosecret")
+    push(wrote, WebpName)
 
     val posted = await it.at.upload("/threads",
         { title: "a webp", body: "eight pixels a side", tags: "" }, webp("shot.webp"))
@@ -553,19 +538,15 @@ async A_WEBP_IS_A_PICTURE_THIS_BOARD_TAKES()
     assertEq(status(got), 200)
     assertEq(header(got, "content-type"), "image/webp")
 
-    await swept(WebpName)
-
 @test
 async A_PICTURE_CLAIMING_MORE_PIXELS_THAN_THIS_BOARD_TAKES_IS_A_413()
-    if !decodes() then skip("slate:image is not on the JavaScript host")
+    if !decodes() then skip("waiting on slate:image reaching the JavaScript host: nothing there decodes a picture")
 
     // **Forty-five bytes claiming a hundred and forty-four million pixels.** Every limit on the
     // number of bytes uploaded passes it, because the file really is that small; what refuses it is
     // the header, read before anything is decoded -- so the answer names the size it claimed and no
     // memory was ever asked for.
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val refused = await it.at.upload("/threads",
         { title: "a large claim", body: "very large", tags: "" }, bomb("huge.png"))
@@ -578,15 +559,16 @@ async A_PICTURE_CLAIMING_MORE_PIXELS_THAN_THIS_BOARD_TAKES_IS_A_413()
 
 @test
 async THE_DISPLAY_COPY_IS_A_WEBP_AT_THE_WIDTH_OF_THE_COLUMN_AND_THE_ORIGINAL_IS_STILL_THERE()
-    if !decodes() then skip("slate:image is not on the JavaScript host")
+    if !decodes() then skip("waiting on slate:image reaching the JavaScript host: nothing there decodes a picture")
 
     // A picture wider than the column it will sit in, which is the ordinary case: a phone's camera
     // writes four thousand pixels across and `--m-measure` is 768 of them.
-    val it = made()
     val big = wide(1920, 8)
     val name = nameOf(big, "png")
 
-    await signedIn(it, "grace", "alsosecret")
+    push(wrote, name)
+
+    await signedIn("grace", "alsosecret")
     await it.at.upload("/threads", { title: "a wide one", body: "much too wide", tags: "" },
         { field: "photo", filename: "wide.png", type: "image/png", bytes: big })
 
@@ -613,8 +595,6 @@ async THE_DISPLAY_COPY_IS_A_WEBP_AT_THE_WIDTH_OF_THE_COLUMN_AND_THE_ORIGINAL_IS_
     assertEq(shape.value.height, 6)
     assert(len(response(shown_).body) < len(big), "and it is smaller than what was posted")
 
-    await swept(name)
-
 @test
 async A_GIF_HAS_NO_DISPLAY_COPY_AND_THE_SAME_ADDRESS_ANSWERS_THE_ORIGINAL()
     // **A GIF keeps its original and nothing else**, `readImage` answering the FIRST FRAME of one:
@@ -623,9 +603,9 @@ async A_GIF_HAS_NO_DISPLAY_COPY_AND_THE_SAME_ADDRESS_ANSWERS_THE_ORIGINAL()
     //
     // **So `?display` falls back**, which is what lets a page ask for the copy to look at without
     // knowing whether there is one -- and is the same line that carries a host with no image library.
-    val it = made()
+    push(wrote, GifName)
 
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
     await it.at.upload("/threads", { title: "a reaction", body: "moving, in principle", tags: "" },
         gif("wave.gif"))
 
@@ -635,20 +615,19 @@ async A_GIF_HAS_NO_DISPLAY_COPY_AND_THE_SAME_ADDRESS_ANSWERS_THE_ORIGINAL()
     assertEq(header(got, "content-type"), "image/gif")
     assertEq(response(got).body, Gif)
 
-    await swept(GifName)
-
 @test
 async AN_AVATAR_S_DISPLAY_COPY_IS_THE_FIXED_SQUARE_WHATEVER_SHAPE_WAS_SENT()
-    if !decodes() then skip("slate:image is not on the JavaScript host")
+    if !decodes() then skip("waiting on slate:image reaching the JavaScript host: nothing there decodes a picture")
 
     // **`.m-avatar` is a circle with `object-fit: cover` on it**, so what is stored is the square
     // that fills it: 128 pixels, which is `mortar`'s `large` at 4rem doubled for a retina screen.
     // A picture 240 times wider than it is tall still comes back square.
-    val it = made()
     val banner = wide(1920, 8)
     val name = nameOf(banner, "png")
 
-    await signedIn(it, "grace", "alsosecret")
+    push(wrote, name)
+
+    await signedIn("grace", "alsosecret")
 
     val put = await it.at.upload("/profile/avatar", {},
         { field: "photo", filename: "me.png", type: "image/png", bytes: banner })
@@ -666,13 +645,9 @@ async AN_AVATAR_S_DISPLAY_COPY_IS_THE_FIXED_SQUARE_WHATEVER_SHAPE_WAS_SENT()
     assertEq(shape.value.width, 128)
     assertEq(shape.value.height, 128)
 
-    await swept(name)
-
 @test
 async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_A_415_WHATEVER_IT_SAYS_IT_IS()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     // **It is labelled `image/png` and it is a shell script**, which is exactly what the header is
     // worth: the first bytes are what decide.
@@ -695,9 +670,7 @@ async A_REFUSED_UPLOAD_IS_STILL_A_PROBLEM_DOCUMENT_AND_ITS_TYPE_IS_THE_PROBLEM_S
     // **RFC 9457's `type` is the PROBLEM's type, a URI, and `about:blank` where there is none.**
     // The media type the client claimed is a different thing and `sluice` 0.4.1 calls it a different
     // thing: it comes back as `mediaType`, and `type` says what every problem document's `type` says.
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val refused = await it.at.upload("/threads", { title: "a program", body: "not a picture", tags: "" },
         program("innocent.png"))
@@ -707,9 +680,9 @@ async A_REFUSED_UPLOAD_IS_STILL_A_PROBLEM_DOCUMENT_AND_ITS_TYPE_IS_THE_PROBLEM_S
 
 @test
 async A_PHOTO_OVER_THE_LIMIT_IS_A_413()
-    val it = made({ photoLimit: 64 })
+    it = made({ photoLimit: 64 })
 
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val refused = await it.at.upload("/threads", { title: "too big", body: "much too big", tags: "" },
         picture("big.png"))
@@ -725,9 +698,7 @@ async A_PHOTO_OVER_THE_LIMIT_IS_A_413()
 
 @test
 async A_MEMBER_MAY_DELETE_THEIR_OWN_REPLY_AND_NOT_SOMEBODY_ELSE_S()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val mine = await it.at.form("/replies/1/delete", { back: "/threads/1" })
 
@@ -743,9 +714,7 @@ async A_MEMBER_MAY_DELETE_THEIR_OWN_REPLY_AND_NOT_SOMEBODY_ELSE_S()
 
 @test
 async DELETING_A_THREAD_IS_AN_ADMINISTRATOR_S()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     assertEq(status(await it.at.form("/threads/1/delete", { back: "/" })), 403)
 
@@ -759,22 +728,18 @@ async DELETING_A_THREAD_IS_AN_ADMINISTRATOR_S()
 
 @test
 async THE_ADMIN_PAGE_IS_A_403_PAGE_FOR_EVERYBODY_ELSE()
-    val it = made()
     val visitor = await it.at.get("/admin")
 
     assertEq(status(visitor), 403)
     assert(shows(visitor, "for administrators"), "and says so in words")
 
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     assertEq(status(await it.at.get("/admin")), 200)
 
 @test
 async AN_ADMINISTRATOR_SEES_WHO_IS_SIGNED_IN_AND_CAN_END_IT()
-    val it = made()
-    val other = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     val said = doc(await it.at.asJson("/admin"))
 
@@ -793,7 +758,6 @@ async AN_ADMINISTRATOR_SEES_WHO_IS_SIGNED_IN_AND_CAN_END_IT()
 
 @test
 async THE_THEME_IS_IN_THE_ADDRESS_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDERS()
-    val it = made()
     val first = await it.at.get("/")
 
     assert(shows(first, "data-theme=\"light\""))
@@ -812,8 +776,6 @@ async THE_THEME_IS_IN_THE_ADDRESS_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDER
 
 @test
 async ANYTHING_THAT_IS_NOT_dark_IS_LIGHT_BECAUSE_A_QUERY_IS_SOMETHING_ANYBODY_MAY_TYPE()
-    val it = made()
-
     // **Nothing here normalises the address any more**: `mortar` 0.2.1's `Theme` reads a word it does
     // not know as the default and says nothing, so the board serves a light page for a spelling a
     // stranger chose rather than a 500 -- and the word stays in the address it was typed into.
@@ -827,9 +789,7 @@ async ANYTHING_THAT_IS_NOT_dark_IS_LIGHT_BECAUSE_A_QUERY_IS_SOMETHING_ANYBODY_MA
 
 @test
 async A_DESTINATION_OUT_OF_A_REQUEST_IS_CHECKED_AND_NOT_TRUSTED()
-    val it = made()
-
-    await signedIn(it, "grace", "alsosecret")
+    await signedIn("grace", "alsosecret")
 
     val away = await it.at.form("/signout", { back: "//elsewhere.example/steal" })
 
@@ -841,8 +801,6 @@ async A_DESTINATION_OUT_OF_A_REQUEST_IS_CHECKED_AND_NOT_TRUSTED()
 
 @test
 async EVERY_ANSWER_IS_NAMED_AND_AN_ID_A_CLIENT_ALREADY_HAS_IS_KEPT()
-    val it = made()
-
     // **The id is on the answer and not only in the log**, which is what lets somebody looking at a
     // page and somebody looking at the log line be talking about the same request.
     assert(header(await it.at.get("/"), "X-Request-Id") != null, "every answer is named")
@@ -855,7 +813,7 @@ async EVERY_ANSWER_IS_NAMED_AND_AN_ID_A_CLIENT_ALREADY_HAS_IS_KEPT()
 async A_REQUEST_THAT_OUTRUNS_ITS_DEADLINE_IS_ANSWERED_AND_NOT_LEFT_HANGING()
     // **503 and not 504**, which is RFC 9110's own line: 504 is for a server acting as a gateway,
     // and a board waiting on its own database is not one.
-    val it = made({ deadline: 5, store: slow(board(seed())) })
+    it = made({ deadline: 5, store: slow(board(seed())) })
     val late = await it.at.asJson("/")
 
     assertEq(status(late), 503)
@@ -863,8 +821,6 @@ async A_REQUEST_THAT_OUTRUNS_ITS_DEADLINE_IS_ANSWERED_AND_NOT_LEFT_HANGING()
 
 @test
 async A_DRAINING_BOARD_ANSWERS_503_TO_EVERYTHING_ITS_OWN_HEALTH_CHECK_INCLUDED()
-    val it = made()
-
     assertEq(status(await it.at.get("/health")), 200)
 
     // **This is what `SIGTERM` does first**: stop taking new requests, then let what is in hand
@@ -895,11 +851,12 @@ async canServe() -> boolean
 
 @test
 async THE_BROWSER_PROGRAM_IS_SERVED_OFF_THE_DISK_AND_NOTHING_ELSE_IS()
-    if !(await canServe()) then skip("slate:http's files() faults on this host: a stat has no mtime")
-    if !(await exists("./public/app.js"))
-        skip("the browser program has not been built: slate js client.slx -o public/app.js")
+    if !(await canServe())
+        skip("waiting on a stat with an mtime on this host, which slate:http's files() reads")
 
-    val it = made()
+    if !(await exists("./public/app.js"))
+        skip("waiting on `slate scripts/build.sl`, which writes the public/app.js this serves")
+
     val js = await it.at.get("/assets/app.js")
 
     assertEq(status(js), 200)
@@ -922,8 +879,6 @@ async THE_BROWSER_PROGRAM_IS_SERVED_OFF_THE_DISK_AND_NOTHING_ELSE_IS()
 
 @test
 async THE_HEALTH_CHECK_ASKS_THE_STORE_AND_NOT_A_FLAG_IN_THIS_PROCESS()
-    val it = made()
-
     assertEq(status(await it.at.get("/health")), 200)
 
     it.store.unwell(true)
@@ -935,8 +890,6 @@ async THE_HEALTH_CHECK_ASKS_THE_STORE_AND_NOT_A_FLAG_IN_THIS_PROCESS()
 
 @test
 async A_STORE_THAT_IS_DOWN_IS_A_503_PROBLEM_DOCUMENT_AND_NOT_A_FAULT()
-    val it = made()
-
     it.store.unwell(true)
 
     val ill = await it.at.asJson("/")
@@ -946,7 +899,7 @@ async A_STORE_THAT_IS_DOWN_IS_A_503_PROBLEM_DOCUMENT_AND_NOT_A_FAULT()
 
 @test
 async TOO_MANY_WRITES_A_MINUTE_ARE_429_WITH_A_RETRY_AFTER()
-    val it = made({ postLimit: 2 })
+    it = made({ postLimit: 2 })
 
     await it.at.get("/signin")
     await it.at.post("/signin", { name: "ada", password: "wrong" })
@@ -959,7 +912,7 @@ async TOO_MANY_WRITES_A_MINUTE_ARE_429_WITH_A_RETRY_AFTER()
     assertEq(string(header(over, "x-ratelimit-limit")), "2")
 
 // A write, with headers of the caller's own -- which is how a test forges the header a proxy writes.
-async posting(it: object, headers: object)
+async posting(headers: object)
     await it.at.sent("POST", "/signin",
         { headers: headers with { "content-type": "application/json" },
           query: { format: "json" },
@@ -967,35 +920,34 @@ async posting(it: object, headers: object)
 
 @test
 async A_FORWARDED_HEADER_BUYS_NOTHING_WHERE_NOTHING_IS_IN_FRONT_OF_THE_BOARD()
-    val it = made({ postLimit: 2 })
+    it = made({ postLimit: 2 })
 
     await it.at.get("/signin")
-    await posting(it, {})
-    await posting(it, {})
+    await posting({})
+    await posting({})
 
     // **The header is a value anybody can write**, so a limiter that read it by default would stop
     // only the clients who were not trying. The board is not behind a proxy here, so what counts is
     // the socket this arrived on and the header is not looked at.
-    assertEq(status(await posting(it, { "x-forwarded-for": "203.0.113.9" })), 429)
+    assertEq(status(await posting({ "x-forwarded-for": "203.0.113.9" })), 429)
 
 @test
 async BEHIND_A_PROXY_THE_LIMIT_COUNTS_THE_FORWARDED_CLIENT_AND_NOT_THE_PROXY()
-    val it = made({ postLimit: 2, trustProxy: true })
+    it = made({ postLimit: 2, trustProxy: true })
 
     await it.at.get("/signin")
-    await posting(it, { "x-forwarded-for": "203.0.113.9" })
-    await posting(it, { "x-forwarded-for": "203.0.113.9" })
+    await posting({ "x-forwarded-for": "203.0.113.9" })
+    await posting({ "x-forwarded-for": "203.0.113.9" })
 
     // Every request here arrives from the same address, which behind a proxy is the proxy's: keyed on
     // that, the fourth request would be refused whoever made it, and the board would be one client.
-    assertEq(status(await posting(it, { "x-forwarded-for": "203.0.113.9" })), 429)
-    assertEq(status(await posting(it, { "x-forwarded-for": "198.51.100.7" })), 401)
+    assertEq(status(await posting({ "x-forwarded-for": "203.0.113.9" })), 429)
+    assertEq(status(await posting({ "x-forwarded-for": "198.51.100.7" })), 401)
 
 // -- the JSON API ----------------------------------------------------------------------------------------
 
 @test
 async THE_JSON_API_ANSWERS_ROWS_AND_PROBLEM_DOCUMENTS()
-    val it = made()
     val listed = await it.at.get("/api/threads")
 
     assertEq(status(listed), 200)
@@ -1013,9 +965,7 @@ async THE_JSON_API_ANSWERS_ROWS_AND_PROBLEM_DOCUMENTS()
 
 @test
 async THE_POLL_A_PAGE_MAKES_ASKS_ONLY_FOR_WHAT_IT_HAS_NOT_SEEN()
-    val it = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
     await it.at.form("/threads/1/replies", { body: "the new one" })
 
     val fresh = doc(await it.at.get("/api/threads/1/replies?after=1"))
@@ -1025,9 +975,7 @@ async THE_POLL_A_PAGE_MAKES_ASKS_ONLY_FOR_WHAT_IT_HAS_NOT_SEEN()
 
 @test
 async THE_JSON_API_TAKES_ITS_TOKEN_IN_A_HEADER_BECAUSE_A_CLIENT_LIBRARY_CAN_SET_ONE()
-    val it = made()
-
-    await signedIn(it, "ada", "supersecret")
+    await signedIn("ada", "supersecret")
 
     val made_ = await it.app.handle({ method: "POST",
                                       path: "/api/threads",
@@ -1049,7 +997,6 @@ async THE_JSON_API_TAKES_ITS_TOKEN_IN_A_HEADER_BECAUSE_A_CLIENT_LIBRARY_CAN_SET_
 
 @test
 async THE_PAGE_CARRIES_THE_STATE_THE_BROWSER_HYDRATES_AGAINST()
-    val it = made()
     val page = await it.at.get("/?tag=slate")
 
     assert(shows(page, "<script type=\"application/json\" id=\"board-state\">"))

@@ -278,14 +278,44 @@ sign in: 303
 $argon2id$v=19$m=19456,t=2,p=1$5tR+pA2dCqEKC8G+Z6MCZg$rOGaH2tOA/Gv2u8BVM7iYWG/P71Wc1fXvzDMz+eaZS8
 ```
 
-## The tests
+## Running the tests
 
 ```
 slate test tests
 slate test --js tests
-npm install
 NODE_OPTIONS="--import ./tests-dom/setup.mjs" slate test --js tests-dom
 ```
+
+Three commands and all three have to be green. The third needs `npm install` once, and it prints a
+wall of `Could not parse CSS stylesheet` from jsdom's CSS parser, which does not read the native
+nesting every `mortar` sheet is written in — noise, not a failure.
+
+**`slate test tests --only <substring>` runs the tests whose name contains it** and prepares no file
+that has nothing chosen, which is what to reach for while working on one thing:
+`--only PHOTO`, `--only THE_THEME`, `--only 429`. A filter that matches nothing is a failure and not
+an empty success, so a misspelling says so rather than passing.
+
+**What each command can say:**
+
+| | |
+|---|---|
+| `slate test tests` | every route, page, statement and upload, under the interpreter |
+| `slate test --js tests` | the same suite compiled to JavaScript and run under node |
+| the jsdom one | the real pages adopted by a real document — hydration, events, mutations |
+
+**jsdom is what the first two cannot reach.** They render to a string, which says what the markup
+says and nothing about what a browser makes of it: whether the page can be *adopted* at all, whether
+hydration writes anything it did not have to, whether a form the framework attached really submits
+without a reload. `tests-dom/` measures that with jsdom's own `MutationObserver` — the browser's
+answer rather than the framework's.
+
+**And what the live run covers is what no suite can**: a real socket, a real multipart body, a real
+PostgreSQL, and `SIGTERM`. The section above is the recipe.
+
+**Fixtures are opened by the test and put back by a hook.** `tests/routes.sl` builds a whole board in
+its `@setup` and closes its event streams and sweeps its photos in `@teardown`, so a failed assertion
+still leaves the working directory as it found it — which is the point of a teardown, and the reason
+almost no test here ends in tidying up.
 
 The first two are the same suite on both hosts and need no database, no socket and nothing to start:
 a request is a value, a handler is a function of it, and `await app.handle(request(…))` is the whole

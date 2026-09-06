@@ -31,6 +31,11 @@ val ThreadColumns = [{ name: "id", oid: 23 }, { name: "title", oid: 25 }, { name
 val UserColumns = [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "role", oid: 25 },
                    { name: "avatar", oid: 25 }, { name: "made", oid: 20 }]
 
+// The columns a sign-in reads, which is the one query that comes back with a password on it.
+val SignInColumns = [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "role", oid: 25 },
+                     { name: "avatar", oid: 25 }, { name: "password", oid: 25 },
+                     { name: "made", oid: 20 }]
+
 var probed = null
 
 // Whether this host has sockets at all, asked once by trying.
@@ -68,37 +73,96 @@ async triedHash() -> boolean
 
     true
 
-late(what: string) = setTimeout(() -> ranLong(what), Guard)
+// -- what stands around every test in this file ----------------------------------------------------------
+//
+// **THE HOOKS OWN THE STATE AND THE BODY STILL OWNS THE LOOP**, which is not the split anybody would
+// choose and is the one slate 0.0.32 allows. **A HOOK IS OUTSIDE THE RUNNER'S PER-TEST DRAIN**, and
+// both halves of that bite:
+//
+// - a `@setup` that leaves a live handle -- a listener, an armed timer -- stops the loop delivering
+//   anything to the test after it, and the run hangs with nothing printed at all;
+// - a `@teardown` runs AFTER the drain, so it cannot put out a timer or close a socket the body left:
+//   the drain waits the timer out first, and a three-second watchdog cleared in a teardown fails the
+//   test three seconds later instead of passing at once.
+//
+// So `talking` opens and `shut` closes, both from the body, and the `@teardown` beside them is the
+// second line of defence rather than the first -- it does run once the watchdog has ended a hang, and
+// what it gives back then is a socket the body never reached.
+//
+// **What a test says back is `replies` and what it reads is `seen`**, both put back by `@setup`; the
+// server reads them where it stands, there being nothing else to hand a hook. So a test is one line
+// of canned answers, the call it makes, what it asserts about the statements, and `shut()`.
 
-ranLong(what: string)
-    throw "the " + what + " did not finish in time"
+// What the server says back, and every statement it was sent.
+var replies = {}
+var seen = []
+
+// The listening socket, the client speaking to it, and the watchdog.
+var fake = null
+var store = null
+var guard = null
 
 // A server whose answers are canned, keeping every statement it was sent.
-told(replies: object, seen: array) -> function
-    replying(sql, params)
-        push(seen, { sql: sql, params: params })
+replying(sql, params)
+    push(seen, { sql: sql, params: params })
 
-        for [prefix, said] in entries(replies)
-            if contains(sql, prefix) then return said
+    for [prefix, said] in entries(replies)
+        if contains(sql, prefix) then return said
 
-        { tag: "SELECT 0" }
+    { tag: "SELECT 0" }
 
-    replying
+// The bell that ends a hang, armed by every test that opens a socket and put out by `shut`.
+watched()
+    guard = setTimeout(ranLong, Guard)
 
-async opened(replies: object, seen: array) -> object
-    val fake = server(told(replies, seen))
+ranLong()
+    throw "a test in this file did not finish in time"
+
+// `talking(said)` -- a server answering out of `said`, and a store speaking to it.
+async talking(said: object)
+    watched()
+
+    replies = said
+    fake = server(replying)
+
     val made = await postgres({ host: "127.0.0.1",
                                 port: portOf(fake),
                                 user: "ada",
                                 password: "pencil",
                                 database: "board" })
 
-    { fake: fake, made: made }
+    if !made.ok then throw "the test server would not take a connection: " + made.error
 
-shut(open: object)
-    if open.made.ok then open.made.value.close()
+    store = made.value
 
-    closeSocket(open.fake)
+    // **The count starts AFTER the connection and not before it**, so that a startup exchange which
+    // ever did send a statement would be counted where it belongs rather than in the test's own.
+    seen = []
+
+    null
+
+// Everything `talking` and `watched` took, given back. **The last line of a test that opened
+// anything**, for the reason at the head of this section.
+shut()
+    if guard != null then clearTimeout(guard)
+    if store != null then store.close()
+    if fake != null then closeSocket(fake)
+
+    guard = null
+    store = null
+    fake = null
+
+@setup
+freshServer()
+    replies = {}
+    seen = []
+    fake = null
+    store = null
+    guard = null
+
+@teardown
+disconnect()
+    shut()
 
 // A board with one thread and one person in it.
 val OneThread = { "select count(*) as n": { fields: [{ name: "n", oid: 20 }], rows: [["1"]],
@@ -118,15 +182,11 @@ val OneThread = { "select count(*) as n": { fields: [{ name: "n", oid: 20 }], ro
 
 @test
 async THE_LIST_ASKS_FOR_A_COUNT_AND_THEN_A_PAGE()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
 
-    val guard = late("list test")
-    val seen = []
-    val open = await opened(OneThread, seen)
+    await talking(OneThread)
 
-    assert(open.made.ok)
-
-    val got = await open.made.value.threads({ sort: "newest", tag: "", q: "", page: 1, size: 20 })
+    val got = await store.threads({ sort: "newest", tag: "", q: "", page: 1, size: 20 })
 
     assert(got.ok)
     assertEq(got.value.total, 1)
@@ -144,18 +204,15 @@ async THE_LIST_ASKS_FOR_A_COUNT_AND_THEN_A_PAGE()
     assert(contains(seen[0].sql, "select count(*) as n from threads t"))
     assert(contains(seen[1].sql, "limit 20 offset 0"))
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 async A_TAG_AND_A_SEARCH_TRAVEL_AS_PARAMETERS_AND_NEVER_AS_TEXT()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
 
-    val guard = late("filter test")
-    val seen = []
-    val open = await opened(OneThread, seen)
+    await talking(OneThread)
 
-    await open.made.value.threads({ sort: "busiest", tag: "slate", q: "100%", page: 2, size: 5 })
+    await store.threads({ sort: "busiest", tag: "slate", q: "100%", page: 2, size: 5 })
 
     // **The server parses the statement before it is given a single value**, so nothing a person typed
     // can become part of the query -- `$1` is the whole of the defence and there is nothing to escape.
@@ -171,8 +228,7 @@ async A_TAG_AND_A_SEARCH_TRAVEL_AS_PARAMETERS_AND_NEVER_AS_TEXT()
     assert(contains(seen[1].sql, "order by t.replies desc, t.made desc, t.id desc"))
     assert(contains(seen[1].sql, "limit 5 offset 5"))
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 A_SORT_KEY_A_CLIENT_INVENTED_IS_THE_FIRST_ONE()
@@ -187,16 +243,14 @@ A_SORT_KEY_A_CLIENT_INVENTED_IS_THE_FIRST_ONE()
 
 @test
 async A_PASSWORD_IS_HASHED_ON_THE_WAY_IN_AND_NEVER_COMES_BACK_OUT()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("`argon2` is not on this back end, so there is no hash to check")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
+    if !(await passwords()) then skip("waiting on `argon2` on this back end: there is no hash to check without it")
 
-    val guard = late("sign-up test")
-    val seen = []
-    val open = await opened({ "insert into users": { fields: UserColumns,
-                                                     rows: [["3", "hopper", "member", null,
-                                                             "1756900000"]],
-                                                     tag: "INSERT 0 1" } }, seen)
-    val made = await open.made.value.signUp("hopper", "correct horse", "member")
+    await talking({ "insert into users": { fields: UserColumns,
+                                           rows: [["3", "hopper", "member", null, "1756900000"]],
+                                           tag: "INSERT 0 1" } })
+
+    val made = await store.signUp("hopper", "correct horse", "member")
 
     assert(made.ok)
     assertEq(made.value.name, "hopper")
@@ -207,19 +261,17 @@ async A_PASSWORD_IS_HASHED_ON_THE_WAY_IN_AND_NEVER_COMES_BACK_OUT()
     assert(startsWith(seen[0].params[1], "$argon2id$"))
     assert(!contains(seen[0].params[1], "correct horse"))
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 async A_NAME_SOMEBODY_ELSE_HAS_COMES_BACK_AS_23505_AND_NOT_AS_A_FAULT()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("`argon2` is not on this back end, and signing up hashes")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
+    if !(await passwords()) then skip("waiting on `argon2` on this back end: signing up hashes")
 
-    val guard = late("duplicate test")
-    val seen = []
-    val open = await opened({ "insert into users": { error: { code: "23505",
-                                                              message: "duplicate key value" } } }, seen)
-    val made = await open.made.value.signUp("ada", "correct horse", "member")
+    await talking({ "insert into users": { error: { code: "23505",
+                                                    message: "duplicate key value" } } })
+
+    val made = await store.signUp("ada", "correct horse", "member")
 
     // **A unique index refusing a row is one round trip**, where a `select` first would be a race
     // between two people picking the same name -- and the SQLSTATE survives the trip, which is the
@@ -227,24 +279,20 @@ async A_NAME_SOMEBODY_ELSE_HAS_COMES_BACK_AS_23505_AND_NOT_AS_A_FAULT()
     assert(!made.ok)
     assertEq(made.code, "23505")
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 async A_PASSWORD_IS_CHECKED_AGAINST_THE_RECORD_AND_A_WRONG_ONE_IS_A_NULL()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("`argon2` is not on this back end, so there is nothing to check against")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
+    if !(await passwords()) then skip("waiting on `argon2` on this back end: there is nothing to check against without it")
 
-    val guard = late("sign-in test")
-    val seen = []
-    val stored = await argon2("correct horse")
-    val open = await opened({ "select id, name, role, avatar, password":
-        { fields: [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "role", oid: 25 },
-                   { name: "avatar", oid: 25 }, { name: "password", oid: 25 },
-                   { name: "made", oid: 20 }],
-          rows: [["1", "ada", "admin", null, stored, "1756900000"]],
-          tag: "SELECT 1" } }, seen)
-    val store = open.made.value
+    val kept = await argon2("correct horse")
+
+    await talking({ "select id, name, role, avatar, password":
+                        { fields: SignInColumns,
+                          rows: [["1", "ada", "admin", null, kept, "1756900000"]],
+                          tag: "SELECT 1" } })
+
     val right = await store.signIn("ada", "correct horse")
     val wrong = await store.signIn("ada", "not it")
 
@@ -259,21 +307,12 @@ async A_PASSWORD_IS_CHECKED_AGAINST_THE_RECORD_AND_A_WRONG_ONE_IS_A_NULL()
     assert(wrong.ok)
     assertEq(wrong.value, null)
 
-    clearTimeout(guard)
-    shut(open)
-
-// The columns a sign-in reads, which is the one query that comes back with a password on it.
-val SignInColumns = [{ name: "id", oid: 23 }, { name: "name", oid: 25 }, { name: "role", oid: 25 },
-                     { name: "avatar", oid: 25 }, { name: "password", oid: 25 },
-                     { name: "made", oid: 20 }]
+    shut()
 
 @test
 async SIGNING_IN_REPLACES_A_RECORD_HASHED_UNDER_WEAKER_PARAMETERS()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("`argon2` is not on this back end, so there is nothing to re-hash")
-
-    val guard = late("re-hash test")
-    val seen = []
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
+    if !(await passwords()) then skip("waiting on `argon2` on this back end: there is nothing to re-hash without it")
 
     // **A record from a board whose numbers were smaller**, which is what the parameters travelling
     // inside a record make possible: it still verifies, and it is still below what is written today.
@@ -283,12 +322,13 @@ async SIGNING_IN_REPLACES_A_RECORD_HASHED_UNDER_WEAKER_PARAMETERS()
     assert(await argon2Verify(old, "correct horse"))
     assert(argon2NeedsRehash(old))
 
-    val open = await opened({ "select id, name, role, avatar, password":
-                                  { fields: SignInColumns,
-                                    rows: [["1", "ada", "admin", null, old, "1756900000"]],
-                                    tag: "SELECT 1" },
-                              "update users set password": { tag: "UPDATE 1" } }, seen)
-    val who = await open.made.value.signIn("ada", "correct horse")
+    await talking({ "select id, name, role, avatar, password":
+                        { fields: SignInColumns,
+                          rows: [["1", "ada", "admin", null, old, "1756900000"]],
+                          tag: "SELECT 1" },
+                    "update users set password": { tag: "UPDATE 1" } })
+
+    val who = await store.signIn("ada", "correct horse")
 
     // **The sign-in is a sign-in and the upgrade is beside it**, so what the caller gets back is what
     // it would have got anyway.
@@ -305,44 +345,38 @@ async SIGNING_IN_REPLACES_A_RECORD_HASHED_UNDER_WEAKER_PARAMETERS()
     assertEq(argon2NeedsRehash(seen[1].params[0]), false)
     assert(await argon2Verify(seen[1].params[0], "correct horse"))
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 async A_RECORD_ALREADY_AT_TODAY_S_NUMBERS_IS_LEFT_ALONE()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("`argon2` is not on this back end, so there is no record to leave alone")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
+    if !(await passwords()) then skip("waiting on `argon2` on this back end: there is no record to leave alone without it")
 
-    val guard = late("no re-hash test")
-    val seen = []
     val current = await argon2("correct horse")
-    val open = await opened({ "select id, name, role, avatar, password":
-                                  { fields: SignInColumns,
-                                    rows: [["1", "ada", "admin", null, current, "1756900000"]],
-                                    tag: "SELECT 1" } }, seen)
-    val who = await open.made.value.signIn("ada", "correct horse")
+
+    await talking({ "select id, name, role, avatar, password":
+                        { fields: SignInColumns,
+                          rows: [["1", "ada", "admin", null, current, "1756900000"]],
+                          tag: "SELECT 1" } })
+
+    val who = await store.signIn("ada", "correct horse")
 
     assert(who.ok)
 
     // **One statement and no write**, which is what every sign-in after the first upgrade costs.
     assertEq(len(seen), 1)
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 async A_PASSWORD_COLUMN_THAT_IS_NOT_AN_ARGON2_RECORD_IS_A_FAULT()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
-    if !(await passwords()) then skip("`argon2` is not on this back end, so a bad record faults for the wrong reason")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
+    if !(await passwords()) then skip("waiting on `argon2` on this back end: a bad record faults for the wrong reason without it")
 
-    val guard = late("bad record test")
-    val seen = []
-    val open = await opened({ "select id, name, role, avatar, password":
-                                  { fields: SignInColumns,
-                                    rows: [["1", "ada", "admin", null, "a plaintext password",
-                                            "1756900000"]],
-                                    tag: "SELECT 1" } }, seen)
-    val store = open.made.value
+    await talking({ "select id, name, role, avatar, password":
+                        { fields: SignInColumns,
+                          rows: [["1", "ada", "admin", null, "a plaintext password", "1756900000"]],
+                          tag: "SELECT 1" } })
 
     // **A row that will not parse is a defect in whatever wrote the column and not somebody guessing**,
     // which is why `argon2Verify` faults over it rather than answering `false`: a corrupted row read as
@@ -350,31 +384,29 @@ async A_PASSWORD_COLUMN_THAT_IS_NOT_AN_ARGON2_RECORD_IS_A_FAULT()
     // distinction straight up.
     await assertFaults(() -> store.signIn("ada", "correct horse"), "not an Argon2 record")
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 // -- replies ----------------------------------------------------------------------------------------------
 
 @test
 async A_REPLY_AND_THE_THREAD_S_COUNTERS_MOVE_IN_ONE_TRANSACTION()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
 
-    val guard = late("reply test")
-    val seen = []
-    val open = await opened({ "insert into replies": { fields: [{ name: "id", oid: 23 }],
-                                                       rows: [["9"]], tag: "INSERT 0 1" },
-                              "select r.id, r.thread": { fields: [{ name: "id", oid: 23 },
-                                                                  { name: "thread", oid: 23 },
-                                                                  { name: "body", oid: 25 },
-                                                                  { name: "photo", oid: 25 },
-                                                                  { name: "author", oid: 23 },
-                                                                  { name: "author_name", oid: 25 },
-                                                                  { name: "author_avatar", oid: 25 },
-                                                                  { name: "made", oid: 20 }],
-                                                         rows: [["9", "1", "hello", null, "2",
-                                                                 "grace", null, "1756900400"]],
-                                                         tag: "SELECT 1" } }, seen)
-    val made = await open.made.value.addReply({ thread: 1, body: "hello", author: 2, photo: null })
+    await talking({ "insert into replies": { fields: [{ name: "id", oid: 23 }],
+                                             rows: [["9"]], tag: "INSERT 0 1" },
+                    "select r.id, r.thread": { fields: [{ name: "id", oid: 23 },
+                                                        { name: "thread", oid: 23 },
+                                                        { name: "body", oid: 25 },
+                                                        { name: "photo", oid: 25 },
+                                                        { name: "author", oid: 23 },
+                                                        { name: "author_name", oid: 25 },
+                                                        { name: "author_avatar", oid: 25 },
+                                                        { name: "made", oid: 20 }],
+                                               rows: [["9", "1", "hello", null, "2",
+                                                       "grace", null, "1756900400"]],
+                                               tag: "SELECT 1" } })
+
+    val made = await store.addReply({ thread: 1, body: "hello", author: 2, photo: null })
 
     assert(made.ok)
     assertEq(made.value.id, 9)
@@ -387,31 +419,28 @@ async A_REPLY_AND_THE_THREAD_S_COUNTERS_MOVE_IN_ONE_TRANSACTION()
     assert(contains(seen[2].sql, "active = now()"))
     assertEq(trim(seen[3].sql), "commit")
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 // -- staying up ---------------------------------------------------------------------------------------------
 
 @test
 async THE_HEALTH_CHECK_IS_A_ROUND_TRIP_AND_NOT_A_FLAG()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
 
-    val guard = late("health test")
-    val seen = []
-    val open = await opened(OneThread, seen)
-    val well = await open.made.value.ping()
+    await talking(OneThread)
+
+    val well = await store.ping()
 
     assert(well.ok)
     assert(contains(seen[0].sql, "select 1 as up"))
 
-    clearTimeout(guard)
-    shut(open)
+    shut()
 
 @test
 async A_DATABASE_THAT_IS_NOT_THERE_IS_AN_ANSWER_AND_NOT_A_FAULT()
-    if !sockets() then skip("this host has no listener, so there is no server to speak to")
+    if !sockets() then skip("waiting on a listener on this host: there is no server to speak to without one")
 
-    val guard = late("no-database test")
+    watched()
 
     // Port 1 is not something anybody is listening on, and a connection that cannot be made is a
     // condition every program handles rather than a defect in it.
@@ -420,4 +449,4 @@ async A_DATABASE_THAT_IS_NOT_THERE_IS_AN_ANSWER_AND_NOT_A_FAULT()
     assert(!made.ok)
     assert(made.error != "")
 
-    clearTimeout(guard)
+    shut()

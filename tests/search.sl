@@ -45,9 +45,14 @@ moved(url: string, write: function) -> object =
 
     val markup = html(mount(<Probe write={write}/>))
 
-    navigateWith(null)
-
     { seen: concat(pushed, replaced), pushed: pushed, replaced: replaced, markup: markup }
+
+// **`navigateWith` is a setting on the router and not something a render owns**, so putting it back
+// is the teardown's rather than `moved`'s last line: a mount that faults would otherwise leave every
+// test after it rendering into this file's `remember`.
+@teardown
+letTheRouterGo()
+    navigateWith(null)
 
 @test
 THE_QUERY_IS_A_RECORD_OF_STRINGS_AND_THE_PATH_IS_NOT_IN_IT()

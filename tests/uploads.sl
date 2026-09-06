@@ -20,6 +20,24 @@ import { decodes, picture, program, swept, Png, PngName } from "./support.sl"
 // A request as `sluice`'s `multipart` guard would have left it.
 carrying(files: array) -> object = { form: { fields: {}, files: files } }
 
+// The photos a test wrote, taken away by `@teardown` however the test went.
+//
+// **The sweep is the teardown's and not the test's, and that is the whole reason it is here**: a
+// failed assertion above `swept` leaves the file on the disk, and the next run then reads what this
+// one wrote rather than what it wrote itself.
+var wrote = []
+
+@setup
+nothingWrittenYet()
+    wrote = []
+
+@teardown
+async sweep()
+    for name in wrote
+        await swept(name)
+
+    null
+
 // -- what kind of thing it is ------------------------------------------------------------------------
 
 @test
@@ -80,6 +98,8 @@ A_FILE_IS_FOUND_BY_THE_FIELD_IT_WAS_SENT_UNDER()
 
 @test
 async A_PHOTO_IS_WRITTEN_UNDER_ITS_OWN_NAME_AND_COMES_BACK_THE_SAME()
+    push(wrote, PngName)
+
     val put = await keep(picture("square.png"))
 
     assert(put.ok, "the write worked")
@@ -91,15 +111,15 @@ async A_PHOTO_IS_WRITTEN_UNDER_ITS_OWN_NAME_AND_COMES_BACK_THE_SAME()
     assertEq(back.value.type, "image/png")
     assertEq(back.value.bytes, Png)
 
-    await swept(PngName)
-
 @test
 async THE_DISPLAY_COPY_IS_REMEMBERED_BESIDE_THE_ORIGINAL_AND_CANNOT_BE_ASKED_FOR()
-    if !decodes() then skip("slate:image is not on the JavaScript host")
+    if !decodes() then skip("waiting on slate:image reaching the JavaScript host: nothing there decodes a picture")
 
     // **The two files cannot be named after one another**, each being named by the digest of its own
     // bytes -- so which copy belongs to which picture is a fact to write down, and `<original>.display`
     // is where it is written.
+    push(wrote, PngName)
+
     await keep(picture("square.png"))
 
     val made = await display(PngName)
@@ -111,8 +131,6 @@ async THE_DISPLAY_COPY_IS_REMEMBERED_BESIDE_THE_ORIGINAL_AND_CANNOT_BE_ASKED_FOR
     // **Nothing can ever ask for the line itself.** Two dots is not a name `minted` accepts, so the
     // one route that serves this directory cannot reach it.
     assert(!(await stored(PngName + ".display")).ok)
-
-    await swept(PngName)
 
 @test
 async SOMETHING_THAT_IS_NOT_AN_IMAGE_IS_REFUSED_BEFORE_ANYTHING_IS_WRITTEN()

@@ -71,6 +71,20 @@ Page(props: object) =
 // What the server would have sent.
 markup() -> string = html(mount(Page({}), stringHost()))
 
+// **The page put back between tests**, so that what one test planted is never what the next one
+// adopts. `sent` goes with it: a submit recorded by one test would otherwise be counted by the next.
+@setup
+anEmptyPage()
+    sent = []
+
+    at("")
+
+// The message a call that is supposed to fail left behind.
+//
+// **`assertFaults` is what a must-fault test writes** and this is the one place it will not do:
+// `MARKUP_THAT_DOES_NOT_MATCH` reads three things out of one sentence, where `assertFaults` compares
+// one -- and asking it three times would hydrate a page three times, each attempt leaving the
+// document in a state the next one did not mean to adopt.
 fell(f) -> string
     var said = ""
 
@@ -134,8 +148,6 @@ async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
     at(markup())
 
     hydrate(<Page/>, domHost("#app"))
-
-    sent = []
 
     click("form.out", "submit")
 
@@ -210,8 +222,6 @@ async A_CLIENT_ONLY_PAGE_IS_BUILT_INTO_AN_EMPTY_CONTAINER()
     assert(!rendersOnServer(Composing), "the composer is the client-only one")
     assert(rendersOnServer(Data), "and a thread is not")
 
-    at("")
-
     await sleep(1)
 
     // **The container and nothing in it**, which is the whole of what `api/render.sl` writes for this
@@ -237,8 +247,6 @@ async HYDRATING_AN_EMPTY_CONTAINER_IS_A_FAULT_WHICH_IS_WHY_ONE_FUNCTION_DECIDES(
     // **The two sides cannot be allowed to disagree**, and this is what disagreeing costs: a page the
     // server did not render, adopted anyway, faults on the first node it looks for. `rendersOnServer`
     // is asked by `api/render.sl` and by `client.slx` so that neither can decide it alone.
-    at("")
-
-    val said = fell(() -> hydrate(<Blank/>, domHost("#app")))
-
-    assert(said != "", "hydration refused the empty page rather than quietly building it")
+    //
+    // **The container is empty because the setup emptied it**, which is what this page really gets.
+    assertFaults(() -> hydrate(<Blank/>, domHost("#app")))
