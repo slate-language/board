@@ -4,6 +4,7 @@ github.com/slate-language/lath v0.5.2 sha256:7a69b93f49caa2dc10c43c6c9d7da1ac38f
 github.com/slate-language/lath v0.5.3 sha256:15ec7045328f82f235eb99ac74f4de65ca9b3838bb48c00c4c8a0258f9470d6a
 github.com/slate-language/lath v0.6.0 sha256:0048974d278e013de43c36ef3b527ea569116f9f9d46919cfb51616bebfca6f9
 github.com/slate-language/lath v0.7.0 sha256:c2988a7609156c0969f56b18a554d5c9ff6d96410cb3a55521853af94bac82bb
+github.com/slate-language/lath v0.7.1 sha256:7e73241e8eebb8b8a88287e413c63ca164ae3bbaaf6c9ee72a35bc10c756af33
 github.com/slate-language/logger v0.1.0 sha256:ffa84e1b6103cb12c195b53760fdd85dea101367888fd1a6c7ae959f9d5d776c
 github.com/slate-language/logger v0.2.0 sha256:1f74a0b14bffdced462d2bca74c1b8ef437fb0d439c436b0c009953df2bcc45f
 github.com/slate-language/mortar v0.2.0 sha256:5cdf7c6b15be453607aa4a7e987f2f50a9f58aee580f032671ab09d2a8c4b552
@@ -13,8 +14,11 @@ github.com/slate-language/mortar v0.4.0 sha256:bf35a8696072b5c5e2fccca4f8822478a
 github.com/slate-language/mortar v0.4.2 sha256:c2cfbff8501a6079f0d88e2deb8950ccacf1291fd9ad6acd632ddc91081caefa
 github.com/slate-language/mortar v0.4.3 sha256:1eaee72d28115416d1fff010604f832d25e6049cfbc76226f91d6657d99c0f3e
 github.com/slate-language/mortar v0.4.4 sha256:c860f8538435704661ccfe2e61f8b5ba732feed2608a0cb7a2bcc57088a6a446
+github.com/slate-language/mortar v0.5.0 sha256:5d370ccc922637aca184253399e6b6e0c23434a4e9ab46a503dbe37f84915590
 github.com/slate-language/pg v0.3.0 sha256:5048bc1470bd21ffce5ab5de4dfcdc34c72e468fd09e4b4f07913d6254fe2796
 github.com/slate-language/pg v0.5.0 sha256:4535b6c93432ffe419b659416b3d6b0ef86f44ae7be353e3f9d46cc80d113adf
+github.com/slate-language/pg v0.6.0 sha256:14b2a3979a884508fc5b18e4db687af9faa9988e1315f0ff44d1d351ac7d9f27
 github.com/slate-language/sluice v0.4.0 sha256:9d114e208e5ad6622af996973482265919003eb872561e7db9b12206e64169eb
 github.com/slate-language/sluice v0.4.1 sha256:7796440a28ac0402114c3ff2dda95802e5c4abba7ef9b8d87802e3b6023389d1
 github.com/slate-language/sluice v0.5.0 sha256:c0c26f98c8d40ba478f65e4148a7a1885ebbe0746aec33443d31e7907a24c316
+github.com/slate-language/sluice v0.5.1 sha256:6e575e8c0013b4a1fd7f26adb949c4f29d63cb9027d64bac82a3f1935791ed45

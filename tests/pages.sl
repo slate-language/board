@@ -175,6 +175,24 @@ AN_ADMINISTRATOR_MAY_DELETE_THE_THREAD_AND_A_MEMBER_MAY_NOT()
     assert(!contains(shown("/threads/7", data, { user: Grace }), "action=\"/threads/7/delete\""))
 
 @test
+A_DELETE_SITE_S_SERVER_MARKUP_IS_UNCHANGED_BY_THE_CONFIRM_IT_NOW_CARRIES()
+    // **`mortar`'s `Confirm` renders nothing at all where there is no document**, so a `Doing` given
+    // a `confirm` prop sends exactly the plain form it always did -- this is the same markup
+    // `AN_ADMINISTRATOR_MAY_DELETE_THE_THREAD_AND_A_MEMBER_MAY_NOT` already pins, checked again
+    // for the shape rather than only the `action`.
+    val mine = { page: "thread", thread: thread(), replies: [reply(1, "grace said this")] }
+    val markup = shown("/threads/7", mine, { user: Grace })
+
+    assert(contains(markup, "class=\"m-form m-doing drop\""))
+    assert(contains(markup, "action=\"/replies/1/delete\""))
+    assert(contains(markup, "class=\"m-button danger\""))
+    assert(contains(markup, ">Delete<"))
+
+    // And nothing of the dialog itself is on the page -- it is script-only, and there is no script.
+    assert(!contains(markup, "m-confirm"))
+    assert(!contains(markup, "role=\"dialog\""))
+
+@test
 A_BOUNDARY_KEEPS_THE_REST_OF_THE_PAGE_WHEN_THE_THREAD_VIEW_CANNOT_RENDER()
     // **A render fault stays a fault** -- slate's two channels decide that, a component that cannot
     // render being a defect in the program -- and a boundary is a `try` around one subtree. The header

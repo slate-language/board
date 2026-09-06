@@ -36,7 +36,7 @@ import { createElement, createStore, Fragment, mount, hydrate, html, Provider, s
     useEffect, useState } from lath
 import { domHost } from lath/dom
 import { navigateWith } from lath/router
-import { cookie, pushPath } from slate:dom
+import { cookie, pushPath, query } from slate:dom
 
 import { App } from "../app/pages.slx"
 import { rendersOnServer } from "../app/shell.sl"
@@ -178,6 +178,59 @@ async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
     // called where a sender was installed -- which is what makes the plain post the fallback rather
     // than a second code path.
     assert(prevented(), "the browser was told not to post it")
+
+// -- delete buttons always confirm first -------------------------------------------------------------
+
+@test
+async CLICKING_DELETE_OPENS_THE_DIALOG_INSTEAD_OF_POSTING()
+    at(markup())
+
+    hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
+
+    click("form.drop[action=\"/replies/1/delete\"]", "submit")
+
+    await sleep(1)
+
+    assertEq(sent.length, 0, "the click opens the question, it does not answer it")
+    assert(query("[data-m-confirm=\"confirm\"]") != null, "mortar's Confirm is on the page")
+    assert(prevented(), "the browser was told not to post the plain form")
+
+@test
+async CANCELLING_THE_DIALOG_CLOSES_IT_WITHOUT_POSTING()
+    at(markup())
+
+    hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
+
+    click("form.drop[action=\"/replies/1/delete\"]", "submit")
+
+    await sleep(1)
+
+    click("[data-m-confirm=\"cancel\"]")
+
+    await sleep(1)
+
+    assertEq(sent.length, 0, "cancel answers no")
+    assert(query("[data-m-confirm=\"confirm\"]") == null, "the dialog is gone")
+
+@test
+async CONFIRMING_THE_DIALOG_POSTS_THE_FORM_IT_STOOD_IN_FRONT_OF()
+    at(markup())
+
+    hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
+
+    click("form.drop[action=\"/replies/1/delete\"]", "submit")
+
+    await sleep(1)
+
+    click("[data-m-confirm=\"confirm\"]")
+
+    await sleep(1)
+
+    assertEq(sent.length, 1)
+    assertEq(sent[0].action, "/replies/1/delete")
+    assertEq(sent[0].fields._csrf, "a-token")
+    assertEq(sent[0].fields.back, "/threads/7")
+    assert(query("[data-m-confirm=\"confirm\"]") == null, "the dialog closes once answered")
 
 @test
 async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()

@@ -115,7 +115,7 @@ reply(props: object) =
     val r = props.reply
     val drop = if props.mine ?? false
         <Doing class="drop" action={"/replies/" + string(r.id) + "/delete"} label="Delete"
-               tone="danger"/>
+               tone="danger" confirm={{ title: "Delete this reply?", detail: "It cannot be undone." }}/>
     else
         null
 
@@ -162,7 +162,7 @@ ThreadView(props: object) =
 
     val drop = if admin
         <Doing class="drop" action={"/threads/" + string(t.id) + "/delete"} label="Delete thread"
-               tone="danger"/>
+               tone="danger" confirm={{ title: "Delete this thread?", detail: "It cannot be undone." }}/>
     else
         null
 
@@ -299,7 +299,7 @@ export Admin(props: object) =
         <td class="who">{s.name}</td>
         <td><Timestamp at={s.at}/></td>
         <td><Doing class="drop" action={"/admin/sessions/" + s.id + "/revoke"} label="Revoke"
-                   tone="danger"/></td>
+                   tone="danger" confirm={{ title: "Revoke this session?", detail: "They will be signed out." }}/></td>
     </tr>
     val open = if live.length == 0
         <p class="empty">Nobody is signed in.</p>

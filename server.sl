@@ -12,7 +12,7 @@
 // This file is the wiring and holds no routes: `api/routes.sl` is the board as HTTP, `api/postgres.sl`
 // is the SQL, and `app/` is what a page looks like.
 
-import { onShutdown } from sluice
+import { hub, onShutdown } from sluice
 import { info, setLevel, setSink, text as asLine } from logger
 import { serve } from slate:http
 import { localPort } from slate:net
@@ -43,16 +43,20 @@ async main()
     // and revoke -- see `api/sessions.sl`, which also says what the same three functions look like over
     // a table. A fleet wants that one; one machine wants this.
     val sessions = sessionStore({})
-    val app = application(store, sessions, { secret: secret(), sink: said, trustProxy: behindProxy() })
+    // **Made here rather than left to `application`'s own default**, so shutdown holds the same
+    // handle its streams were opened on and can end them instead of waiting a grace out.
+    val feed = hub({ replay: 64 })
+    val app = application(store, sessions, { secret: secret(), sink: said, trustProxy: behindProxy(),
+                                              feed: feed })
 
     val port = portOf(env("PORT") ?? "0")
     val server = serve(port, app)
     val site = "http://127.0.0.1:" + string(localPort(server))
 
     // **How a server under a deployment stops**: `SIGTERM` arrives, new requests are refused, what is
-    // in hand finishes, and only then is the socket let go. Doing them in any other order lets a
-    // request in.
-    onShutdown(() -> stopping(app, server, store))
+    // in hand finishes, its event streams are ended rather than waited on, and only then is the
+    // socket let go. Doing them in any other order lets a request in.
+    onShutdown(() -> stopping(app, server, store, feed))
 
     print("the board is at " + site)
 
@@ -75,12 +79,12 @@ portOf(said: string) -> integer
 
     if n is integer && n >= 0 then n else 0
 
-async stopping(app: object, server, store: object)
-    val drained = await app.drain(server, { grace: 10000 })
+async stopping(app: object, server, store: object, feed: object)
+    val drained = await app.drain(server, { grace: 10000, hubs: [feed] })
 
-    // **`cut` is how many requests were still running when the grace ran out**, which is the number
-    // that says a grace is too short or a handler too slow -- and neither is visible unless it is
-    // printed.
+    // **`cut` is how many requests were still running when the grace ran out, `ended` how many event
+    // streams were**, which is the number that says a grace is too short or a handler too slow -- and
+    // neither is visible unless it is printed.
     print("drained:", drained)
 
     store.close()

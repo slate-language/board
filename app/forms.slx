@@ -15,7 +15,7 @@
 // form has and what happens when it is submitted.
 
 import { createElement, Fragment, style, useContext, useRef, useState } from lath
-import { Actions, Button, Field, FileInput, Form, Problem, TextArea } from mortar
+import { Actions, Button, Confirm, Field, FileInput, Form, Problem, TextArea } from mortar
 
 import { Nav, PostContext, Session } from "./context.sl"
 import { into } from "./parts.slx"
@@ -177,10 +177,19 @@ export AvatarForm(props: object) =
 //
 // **A button and not a link, because it changes something.** A `GET` that changed a row would be
 // followed by every crawler and every link prefetcher there is.
+//
+// **An optional `confirm={ title, detail }` puts mortar's `Confirm` in front of the submit.** Given
+// one, a click opens the dialog instead of posting, and only its own confirm button calls through;
+// left off, the button posts exactly as it always did. `Confirm` renders nothing on the string host,
+// so a delete link's server markup is unchanged either way.
 export Doing(props: object) =
     val nav = useContext(Nav)
     val action = props.action
     val csrf = useToken()
+
+    // **Resolved with `??` and never compared with `== null` directly** -- an omitted `confirm` reads
+    // as slate's `undefined`, which is not `null` until something resolves it.
+    val confirm = props.confirm ?? null
 
     // **Where to go afterwards travels in the form and not in `Referer`.** A handler that redirected
     // to whatever a browser said the last page was would be an open redirect, and a header a client
@@ -189,11 +198,32 @@ export Doing(props: object) =
     gather() = { back: nav.url }
 
     val form = useForm(action, gather)
-    val out = <Form class={"m-doing " + (props.class ?? "")} action={action} csrf={csrf}
-                    onSubmit={form[1]}>
-        <input type="hidden" name="back" value={nav.url}/>
-        <Button kind="submit" variant={props.tone ?? "quiet"}>{props.label ?? "Do it"}</Button>
-    </Form>
+    val sent = form[1]
+
+    val [asking, setAsking] = useState(false)
+
+    guard(e: object) =
+        if confirm == null then
+            sent(e)
+        else
+            e.prevent()
+            setAsking(true)
+
+    confirmed() =
+        setAsking(false)
+        sent({ prevent: () -> null })
+
+    val out = <Fragment>
+        <Form class={"m-doing " + (props.class ?? "")} action={action} csrf={csrf}
+                        onSubmit={guard}>
+            <input type="hidden" name="back" value={nav.url}/>
+            <Button kind="submit" variant={props.tone ?? "quiet"}>{props.label ?? "Do it"}</Button>
+        </Form>
+        {if confirm == null then null else
+            <Confirm open={asking} title={confirm.title} detail={confirm.detail ?? null}
+                     confirmLabel={props.label ?? "Confirm"} onConfirm={confirmed}
+                     onCancel={() -> setAsking(false)}/>}
+    </Fragment>
 
     out
 
