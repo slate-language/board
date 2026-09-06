@@ -214,10 +214,10 @@ async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
 // invisible in `curl`, because the server was answering correctly the whole time.
 //
 // **The theme choice used to be exactly this kind of control and is not any more.** `mortar` 0.3.2
-// moved it out of the query entirely -- it is a plain `Button` calling `useTheme()`'s setter, with no
-// `useSearch` and nothing to ask the router for -- so it no longer stands in for this bug. What is
-// worth pinning about it now is the opposite direction: that a page kept moving under a reader who
-// had already chosen dark does not lose that choice, which is the test below.
+// moved it out of the query entirely -- it is a `Segmented` calling `useTheme()`'s setter directly,
+// with no `href`, no `useSearch` and nothing to ask the router for -- so it no longer stands in for
+// this bug. What is worth pinning about it now is the opposite direction: that a page kept moving
+// under a reader who had already chosen dark does not lose that choice, which is the test below.
 Live(props: object) =
     val [url, setUrl] = useState("/threads/7")
 
@@ -331,7 +331,9 @@ async A_THEME_TOGGLE_WRITES_THE_COOKIE()
 
     hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
 
-    click("button[aria-label=\"Theme\"]")
+    // **Both words are on the page at once**, so the click is on the segment NOT already in force --
+    // the group carries `aria-label="Theme"` and only the chosen segment carries `aria-current`.
+    click("nav[aria-label=\"Theme\"] button:not([aria-current])")
 
     await sleep(1)
 
@@ -347,11 +349,11 @@ async A_DARK_THEME_SURVIVES_A_CLIENT_NAVIGATION()
 
     hydrate(<Provider store={createStore()}><Live/></Provider>, domHost("#app"))
 
-    click("button[aria-label=\"Theme\"]")
+    click("nav[aria-label=\"Theme\"] button:not([aria-current])")
 
     await sleep(1)
 
-    assertEq(contains(shown(), ">Light</button>"), true)
+    assertEq(contains(shown(), "aria-current=\"true\">Dark</button>"), true)
     assertEq(contains(shown(), "class=\"mortar board\" data-theme=\"dark\""), true)
 
     // **The router moving the page must not be what decides the colour.** `A_LINK_IT_ATTACHED_

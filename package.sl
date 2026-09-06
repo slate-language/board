@@ -30,7 +30,7 @@
         // from `req.cookies.theme` and written back by `Theme` itself through `slate:dom`'s
         // `setCookie` (0.0.34) whenever a reader toggles it -- no `?theme` query and no `/theme`
         // route needed for the ordinary case.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.4.0" },
+        mortar: { git: "github.com/slate-language/mortar", version: "0.4.4" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.5.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
