@@ -187,6 +187,23 @@ A_PHOTO_IS_AN_IMG_UNDER_UPLOADS_AND_NO_PHOTO_IS_NOTHING()
     assert(!contains(shown("/threads/7", without), "<img src=\"/uploads/"))
 
 @test
+A_PHOTO_LINKS_THE_FILE_THAT_WAS_POSTED_AND_A_POST_WITH_NONE_LINKS_NOTHING()
+    val withOne = { page: "thread", thread: thread({ photo: "threads/7/square.svg" }),
+                    replies: [reply(3, "look at this", { photo: "replies/3/wide.svg" }),
+                              reply(4, "nothing attached")] }
+    val without = { page: "thread", thread: thread(), replies: [] }
+    val markup = shown("/threads/7", withOne)
+
+    // **The link is the address without `?display`**, which is the file somebody uploaded rather than
+    // the copy this board made to fit a column -- and a reply's photo is offered the same way.
+    assert(contains(markup, "<a href=\"/uploads/threads/7/square.svg\">View original</a>"))
+    assert(contains(markup, "<a href=\"/uploads/replies/3/wide.svg\">View original</a>"))
+
+    // A post with no photo renders nothing at all rather than a link to nowhere, which is what keeps
+    // a hydrating page from adopting a node the server never wrote.
+    assert(!contains(shown("/threads/7", without), "View original"))
+
+@test
 SOMEBODY_WITH_NO_PICTURE_GETS_THE_FIRST_LETTER_OF_THEIR_NAME()
     val markup = shown("/", listing([thread()]))
 

@@ -28,6 +28,15 @@
         }
     }
 
+    /* The link to the file somebody actually posted, under the copy this board made of it. It reads
+     * as a caption rather than as a control: it is the smaller of the two things under a photograph
+     * and the delete button beside it is the one with weight. */
+    & .original {
+        margin-top: var(--m-space-2);
+        font-size: var(--m-text-sm);
+        color: var(--m-ink-faint);
+    }
+
     /* **A destructive control is at the END of the thing it destroys and is small.** Floating it
      * beside the title -- which is what this board did before -- puts the one irreversible button on
      * the page directly under the reader's eye on the way in. */

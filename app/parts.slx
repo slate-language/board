@@ -57,6 +57,34 @@ excerpt(body: string) -> string =
 // kind it is holding.
 export pictureOf(file) = if file == null then null else "/uploads/" + string(file) + "?display"
 
+// The same row's file as the address of what was actually uploaded.
+//
+// **The one difference from `pictureOf` is the absence of `?display`**, and that is the whole of what
+// the link under a photo offers: the bytes somebody posted, at the size and in the format they posted
+// them in, where the picture above it is the WebP copy this board made to fit a column. Where there is
+// no display copy -- a GIF, or a host with no `slate:image` -- both addresses answer the same bytes,
+// so the link is never a broken promise and never has to be hidden.
+export originalOf(file) = if file == null then null else "/uploads/" + string(file)
+
+// The line under a photograph that leads to the file itself.
+//
+// **A plain `<a href>` and not a `Link`**: the address is a file and not a page of this application, so
+// what it wants is the browser fetching it, where a `Link` would ask the router for the values a page
+// is rendered from and get a picture. The `download` a browser might want is deliberately absent --
+// what a reader most often means by *view original* is looking at it.
+//
+// **Nothing at all where there is no picture**, which is `mortar`'s own `Photo` rule: a component
+// that renders nothing is one the reconciler holds no node for, so a post with no photo hydrates
+// against markup that has none.
+export Original(props: object) =
+    val file = props.file ?? null
+
+    if file == null then return null
+
+    val out = <p class="original"><a href={originalOf(file)}>View original</a></p>
+
+    out
+
 // -- forms ------------------------------------------------------------------------------------------
 
 // What an `onInput` is for a field whose value lives in a ref.

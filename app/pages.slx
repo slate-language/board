@@ -16,7 +16,7 @@ import { Avatar, CardList, EmptyState, Live, Page, Pagination, Post, PostList, P
          Segmented, SortControls, TagList, Theme, Timestamp, useTheme } from mortar
 
 import { Board, Nav, PostContext, Session } from "./context.sl"
-import { Card, pictureOf, tagged } from "./parts.slx"
+import { Card, Original, pictureOf, tagged } from "./parts.slx"
 import { AvatarForm, Doing, ReplyForm, SearchForm, SignForm, ThreadForm } from "./forms.slx"
 
 import shell from "./shell.css"
@@ -121,7 +121,10 @@ reply(props: object) =
 
     val out = <Post compact name={r.author_name} src={pictureOf(r.author_avatar)}
                     authorHref={"/people/" + r.author_name} at={r.made} body={r.body}
-                    photo={pictureOf(r.photo)} alt={"a photo by " + r.author_name}>{drop}</Post>
+                    photo={pictureOf(r.photo)} alt={"a photo by " + r.author_name}>
+        <Original file={r.photo}/>
+        {drop}
+    </Post>
 
     out
 
@@ -172,6 +175,7 @@ ThreadView(props: object) =
         <Post title={t.title} name={t.author_name} src={pictureOf(t.author_avatar)}
               authorHref={"/people/" + t.author_name} at={t.made} body={t.body}
               photo={pictureOf(t.photo)} alt={t.title} tags={t.tags ?? []} tagHref={tagged}>
+            <Original file={t.photo}/>
             {drop}
         </Post>
         <h2 class="count">{len(rows)} replies</h2>
