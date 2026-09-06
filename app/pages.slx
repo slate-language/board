@@ -12,8 +12,8 @@
 
 import { createElement, Fragment, Boundary, memo, style, useContext } from lath
 import { Anything, Link, router, useSearch, withSearch } from lath/router
-import { Avatar, Button, CardList, EmptyState, Live, Page, Pagination, Post, PostList, Problem,
-         SortControls, TagList, Theme, Timestamp, useTheme } from mortar
+import { Avatar, CardList, EmptyState, Live, Page, Pagination, Post, PostList, Problem,
+         Segmented, SortControls, TagList, Theme, Timestamp, useTheme } from mortar
 
 import { Board, Nav, PostContext, Session } from "./context.sl"
 import { Card, Original, pictureOf, tagged } from "./parts.slx"
@@ -368,21 +368,18 @@ export val routes = [
 
 // -- the theme -------------------------------------------------------------------------------------
 
-// **THE THEME IS A COOKIE NOW, WHICH IS WHY THIS IS ONE BUTTON AND NOT TWO ANCHORS.** A reader's
-// choice belongs to them and not to the page they were on, so `mortar` keeps it in `useTheme()`'s
-// atom and writes it back to a cookie itself; there is nothing here to link to any more, only a
-// setter to call.
+// The two words, as the two halves of a control.
+val ThemeWords = [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]
+
+// **THE THEME IS A COOKIE NOW, AND THIS IS STILL TWO SEGMENTS SHOWING BOTH WORDS AT ONCE** -- that
+// is the look the user chose, and a cookie moving the state does not change it. `mortar` keeps the
+// choice in `useTheme()`'s atom and writes it back to a cookie itself, so the writing half is that
+// setter and there is no address to link to any more.
 ThemeChoice(props: object) =
     val [theme, setTheme] = useTheme()
 
-    toggle()
-        setTheme(if theme == "light" then "dark" else "light")
-
-        null
-
-    val out = <Button class="theme" variant="quiet" onClick={toggle} label="Theme">
-        {if theme == "light" then "Dark" else "Light"}
-    </Button>
+    val out = <Segmented class="theme" options={ThemeWords} value={theme} onChoose={setTheme}
+                         label="Theme"/>
 
     out
 

@@ -10,6 +10,8 @@ github.com/slate-language/mortar v0.2.0 sha256:5cdf7c6b15be453607aa4a7e987f2f50a
 github.com/slate-language/mortar v0.2.1 sha256:326f32e250634c39cbdb6b4763f9389080a056b6b25d4f1fcb3b49887b7725c4
 github.com/slate-language/mortar v0.3.2 sha256:230b1ebd11ef23ee3cae3e2a16525610aba68cb9a03f9160b28d3f13eacf60b1
 github.com/slate-language/mortar v0.4.0 sha256:bf35a8696072b5c5e2fccca4f8822478ada455f6dc13a74c01776dd28ebe20f7
+github.com/slate-language/mortar v0.4.2 sha256:c2cfbff8501a6079f0d88e2deb8950ccacf1291fd9ad6acd632ddc91081caefa
+github.com/slate-language/mortar v0.4.3 sha256:1eaee72d28115416d1fff010604f832d25e6049cfbc76226f91d6657d99c0f3e
 github.com/slate-language/pg v0.3.0 sha256:5048bc1470bd21ffce5ab5de4dfcdc34c72e468fd09e4b4f07913d6254fe2796
 github.com/slate-language/pg v0.5.0 sha256:4535b6c93432ffe419b659416b3d6b0ef86f44ae7be353e3f9d46cc80d113adf
 github.com/slate-language/sluice v0.4.0 sha256:9d114e208e5ad6622af996973482265919003eb872561e7db9b12206e64169eb
