@@ -1,9 +1,10 @@
+#!/usr/bin/env slate
 // The board's own development PostgreSQL, so `slate server.sl` never again dies with "no database".
 //
-//     slate scripts/db.sl
-//     slate scripts/db.sl stop
-//     slate scripts/db.sl status
-//     slate scripts/db.sl reset
+//     scripts/db.sl
+//     scripts/db.sl stop
+//     scripts/db.sl status
+//     scripts/db.sl reset
 //
 // **Homebrew's `postgresql@16` belongs to another account on this machine, not to whoever runs this
 // script** -- `brew services start postgresql@16` installs a launchd agent that reads a data
@@ -36,7 +37,7 @@ failed(what: string, said: string)
 
 // **`run`'s `env` REPLACES the child's, so leaving it out of an options object is what inherits the
 // caller's whole environment** -- which is what every call below wants, PATH included, except the
-// one to `slate scripts/migrate.sl`, which needs `PG_URL` ADDED rather than merely kept.
+// one to `scripts/migrate.sl`, which needs `PG_URL` ADDED rather than merely kept.
 //
 // **A binary is asked for on PATH first, and only then at `PG_BIN`** -- the same order the README
 // documents: usable off PATH, never through `brew services`. A binary found at neither names both
@@ -103,7 +104,7 @@ async startCommand()
 
     val url = urlFor(user, port)
 
-    print("slate scripts/migrate.sl")
+    print("scripts/migrate.sl")
 
     val migrated = await run("slate", ["scripts/migrate.sl"],
                              { env: { PG_URL: url, PATH: env("PATH") ?? "", HOME: env("HOME") ?? "" } })

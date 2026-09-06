@@ -59,21 +59,21 @@ graph is unrecorded.
 A cluster of its own, if you would rather not touch a real one:
 
 ```
-slate scripts/db.sl
+scripts/db.sl
 ```
 
 **`scripts/db.sl` is its own PostgreSQL, not the machine's.** Homebrew's `postgresql@16` on this
 machine belongs to another account, so `brew services start postgresql@16` is not the way in —
 it installs a launchd agent that cannot open its own data directory and exits straight away. This
 script drives `initdb`, `pg_ctl`, `createdb` and `pg_isready` directly instead, keeps the whole
-cluster in `.pgdata/` under the repository, and applies the schema itself. `slate scripts/db.sl stop`
+cluster in `.pgdata/` under the repository, and applies the schema itself. `scripts/db.sl stop`
 stops it, `status` says whether it is running, and `reset` throws `.pgdata/` away and starts fresh —
 this is a development database and nothing here is worth keeping.
 
 Then the browser program, and the server:
 
 ```
-slate scripts/build.sl
+scripts/build.sl
 PORT=8080 BOARD_SECRET=a-long-random-string slate server.sl
 ```
 
@@ -89,7 +89,7 @@ travel inside the program. The board runs without it and loses only its live rep
 reload-free posts.
 
 **`public/app.js` is not tracked in git.** A `git pull` never touches it, so a server left running
-after one is still serving yesterday's browser program — `slate scripts/build.sl` again is what
+after one is still serving yesterday's browser program — `scripts/build.sl` again is what
 makes the change real.
 
 | | |

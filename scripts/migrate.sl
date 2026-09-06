@@ -1,7 +1,8 @@
+#!/usr/bin/env slate
 // The schema, applied.
 //
-//     slate scripts/migrate.sl
-//     PG_URL=postgres://user:secret@host/board slate scripts/migrate.sl
+//     scripts/migrate.sl
+//     PG_URL=postgres://user:secret@host/board scripts/migrate.sl
 //
 // **`schema.sql` is read and run rather than held in a string beside the queries**, which is what puts
 // a schema somewhere a review can see it. Every statement in it is `if not exists`, so running this

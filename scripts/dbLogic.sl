@@ -9,7 +9,7 @@ val Commands = ["start", "stop", "status", "reset"]
 
 export val DefaultPort = 5432
 
-export usage() = "usage: slate scripts/db.sl [start|stop|status|reset]"
+export usage() = "usage: scripts/db.sl [start|stop|status|reset]"
 
 // The subcommand `args` asked for, defaulting to `start`, or `null` where the word is not one of
 // the four this script knows.

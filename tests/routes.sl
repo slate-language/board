@@ -857,7 +857,7 @@ async THE_BROWSER_PROGRAM_IS_SERVED_OFF_THE_DISK_AND_NOTHING_ELSE_IS()
         skip("waiting on a stat with an mtime on this host, which slate:http's files() reads")
 
     if !(await exists("./public/app.js"))
-        skip("waiting on `slate scripts/build.sl`, which writes the public/app.js this serves")
+        skip("waiting on `scripts/build.sl`, which writes the public/app.js this serves")
 
     val js = await it.at.get("/assets/app.js")
 

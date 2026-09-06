@@ -1,6 +1,7 @@
+#!/usr/bin/env slate
 // The browser half, built.
 //
-//     slate scripts/build.sl
+//     scripts/build.sl
 //
 // which is one command wrapping one command:
 //
