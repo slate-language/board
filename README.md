@@ -59,16 +59,20 @@ graph is unrecorded.
 A cluster of its own, if you would rather not touch a real one:
 
 ```
-printf 'slatepw' > /tmp/board-pw
-initdb -D /tmp/board-db -U pgtest --auth-host=scram-sha-256 --pwfile=/tmp/board-pw
-pg_ctl -D /tmp/board-db -o "-p 55433" -l /tmp/board-db.log start
+slate scripts/db.sl
 ```
 
-Then the schema, the browser program, and the server:
+**`scripts/db.sl` is its own PostgreSQL, not the machine's.** Homebrew's `postgresql@16` on this
+machine belongs to another account, so `brew services start postgresql@16` is not the way in —
+it installs a launchd agent that cannot open its own data directory and exits straight away. This
+script drives `initdb`, `pg_ctl`, `createdb` and `pg_isready` directly instead, keeps the whole
+cluster in `.pgdata/` under the repository, and applies the schema itself. `slate scripts/db.sl stop`
+stops it, `status` says whether it is running, and `reset` throws `.pgdata/` away and starts fresh —
+this is a development database and nothing here is worth keeping.
+
+Then the browser program, and the server:
 
 ```
-export PG_URL=postgres://pgtest:slatepw@127.0.0.1:55433/postgres
-slate scripts/migrate.sl
 slate scripts/build.sl
 PORT=8080 BOARD_SECRET=a-long-random-string slate server.sl
 ```
@@ -91,6 +95,7 @@ makes the change real.
 | | |
 |---|---|
 | `PG_URL` | `postgres://user:secret@host/database`. With none, `pg` connects wherever `psql` would |
+| `PG_PORT` | which port `scripts/db.sl` starts its own PostgreSQL on; `5432` where unset |
 | `PORT` | `0` asks the kernel for one, which is what the default does; the server says which |
 | `BOARD_SECRET` | the key a session cookie is signed with. **Set it**: a generated one signs everybody out on every restart, and the server says so on `stderr` |
 | `BOARD_BEHIND_PROXY` | `1` where something in front of this server writes `x-forwarded-for`. Off by default, and *Behind Caddy* below is what it promises |
