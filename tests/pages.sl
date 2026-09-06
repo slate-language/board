@@ -118,7 +118,11 @@ THE_PAGER_COUNTS_PAGES_AND_STOPS_AT_BOTH_ENDS()
 
     assert(contains(markup, "page 1 of 3"))
     assert(contains(markup, "45 threads"))
-    assert(contains(markup, "<span class=\"m-step m-off\">previous</span>"))
+    // **Not a bare `contains(markup, "previous")`**: the pager's own stylesheet ships to the browser
+    // comments and all, and its header comment says the word "previous" -- so the check has to name
+    // the rendered text node, not the word.
+    assert(!contains(markup, ">previous<"))
+    assert(contains(markup, "<span class=\"m-step m-gone\">"))
     assert(contains(markup, "href=\"/?page=2\""))
 
 // -- one thread ---------------------------------------------------------------------------------------
