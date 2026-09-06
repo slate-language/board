@@ -200,7 +200,7 @@ async THE_LIST_ASKS_FOR_A_COUNT_AND_THEN_A_PAGE()
     // about.
     assertEq(got.value.rows[0].made, 1756900100)
 
-    assertEq(len(seen), 3)
+    assertEq(seen.length, 3)
     assert(contains(seen[0].sql, "select count(*) as n from threads t"))
     assert(contains(seen[1].sql, "limit 20 offset 0"))
 
@@ -338,7 +338,7 @@ async SIGNING_IN_REPLACES_A_RECORD_HASHED_UNDER_WEAKER_PARAMETERS()
 
     // **The one moment the plaintext is in hand is the moment after a successful verify**, so the
     // second statement of a sign-in is the update that stores the stronger record.
-    assertEq(len(seen), 2)
+    assertEq(seen.length, 2)
     assert(contains(seen[1].sql, "update users set password"))
     assert(startsWith(seen[1].params[0], "$argon2id$v=19$m=19456,t=2"))
     assertEq(string(seen[1].params[1]), "1")
@@ -364,7 +364,7 @@ async A_RECORD_ALREADY_AT_TODAY_S_NUMBERS_IS_LEFT_ALONE()
     assert(who.ok)
 
     // **One statement and no write**, which is what every sign-in after the first upgrade costs.
-    assertEq(len(seen), 1)
+    assertEq(seen.length, 1)
 
     shut()
 

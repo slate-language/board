@@ -138,4 +138,4 @@ export backTo(req: object)
 
     val to = string(said)
 
-    if len(to) > 0 && to[0..<1] == "/" && !startsWith(to, "//") then to else null
+    if to.length > 0 && to[0..<1] == "/" && !startsWith(to, "//") then to else null

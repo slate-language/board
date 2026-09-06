@@ -74,7 +74,7 @@ export pick(req: object, field: string)
     if form == null then return null
 
     for file in form.files ?? []
-        if file.field == field && len(file.bytes ?? []) > 0 then return file
+        if file.field == field && (file.bytes ?? []).length > 0 then return file
 
     null
 
@@ -88,11 +88,11 @@ export kindOf(bytes: array)
     null
 
 begins(bytes: array, mark: array, at: integer) -> boolean
-    if len(bytes) < at + len(mark) then return false
+    if bytes.length < at + mark.length then return false
 
     var i = 0
 
-    while i < len(mark)
+    while i < mark.length
         if bytes[at + i] != mark[i] then return false
 
         i = i + 1

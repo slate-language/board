@@ -293,9 +293,9 @@ async joined(store: object, req: object)
 // **A shape says what KIND a member is and not what it may hold**, so the checks a board wants that
 // `Credentials` cannot make are written here.
 unusable(name: string, password: string)
-    if len(name) < 2 || len(name) > 30 then return "a name is between 2 and 30 characters"
+    if name.length < 2 || name.length > 30 then return "a name is between 2 and 30 characters"
     if contains(name, "/") || contains(name, " ") then return "a name has no spaces and no slashes"
-    if len(password) < 8 then return "a password is at least 8 characters"
+    if password.length < 8 then return "a password is at least 8 characters"
 
     null
 
@@ -399,7 +399,7 @@ async replied(store: object, feed: object, req: object)
 // left alone posts, and it is not a refusal -- there is simply no photo, which every handler here
 // already tests for.
 picture(file: object) -> boolean
-    if len(file.bytes ?? []) == 0 then return true
+    if (file.bytes ?? []).length == 0 then return true
 
     kindOf(file.bytes) != null
 
@@ -455,7 +455,7 @@ tagsIn(said) -> array
     for part in split(string(said), ",")
         val tag = lower(trim(part))
 
-        if tag != "" && !contains(out, tag) && len(out) < 5 then push(out, tag)
+        if tag != "" && !contains(out, tag) && out.length < 5 then push(out, tag)
 
     out
 

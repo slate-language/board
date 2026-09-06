@@ -104,7 +104,7 @@ store(db: object) -> object
 
         val rows = r.value.rows
 
-        if len(rows) == 0
+        if rows.length == 0
             await argon2(password)
 
             return { ok: true, value: null }
@@ -222,25 +222,25 @@ store(db: object) -> object
             joins = " join tags g on g.thread = t.id"
 
             push(params, tag)
-            push(clauses, "g.tag = $" + string(len(params)))
+            push(clauses, "g.tag = $" + string(params.length))
 
         if q != ""
             // **`%` and `_` are `like`'s own wildcards**, so a search for `100%` has to be escaped or
             // it matches everything beginning `100`.
             push(params, "%" + escapedLike(q) + "%")
 
-            val at = "$" + string(len(params))
+            val at = "$" + string(params.length)
             val like = " ilike " + at + " escape '\\'"
 
             push(clauses, "(t.title" + like + " or t.body" + like + ")")
 
-        { sql: if len(clauses) == 0 then "" else " where " + join(clauses, " and "),
+        { sql: if clauses.length == 0 then "" else " where " + join(clauses, " and "),
           joins: joins,
           params: params }
 
     // The tags of a set of threads, in one round trip rather than one per row.
     async tagsFor(ids: array)
-        if len(ids) == 0 then return { ok: true, value: {} }
+        if ids.length == 0 then return { ok: true, value: {} }
 
         val r = await db.query("select thread, tag from tags where thread = any($1) order by tag", ids)
 
@@ -265,7 +265,7 @@ store(db: object) -> object
 
         val rows = r.value.rows
 
-        if len(rows) == 0 then return { ok: true, value: null }
+        if rows.length == 0 then return { ok: true, value: null }
 
         val labels = await tagsFor([id])
 
@@ -364,7 +364,7 @@ store(db: object) -> object
 
         val rows = gone.value.rows
 
-        if len(rows) == 0 then return { ok: true, value: null }
+        if rows.length == 0 then return { ok: true, value: null }
 
         val counted = await db.query("update threads set replies = greatest(replies - 1, 0)
             where id = $1", rows[0].thread)
@@ -433,7 +433,7 @@ store(db: object) -> object
 // the trip.
 refused(r: object) -> object = { ok: false, error: r.error, code: r.code ?? null }
 
-first(rows: array) = if len(rows) == 0 then null else rows[0]
+first(rows: array) = if rows.length == 0 then null else rows[0]
 
 // **A password column never leaves this file.** The row is read with it because the check needs it,
 // and what goes up is the row without it.

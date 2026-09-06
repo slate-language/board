@@ -42,7 +42,7 @@ reply(id: integer, said: string, over: object = {}) -> object =
       author_avatar: null, made: 1756900300 } with over
 
 listing(rows: array) -> object =
-    { page: "list", threads: { rows: rows, total: len(rows), page: 1, size: 20 },
+    { page: "list", threads: { rows: rows, total: rows.length, page: 1, size: 20 },
       tags: [{ tag: "slate", count: 2 }], sort: "newest", tag: "", q: "" }
 
 // -- the router picks the view --------------------------------------------------------------------
@@ -327,7 +327,7 @@ A_LESS_THAN_IN_THE_STATE_IS_ESCAPED_SO_A_POST_CANNOT_END_THE_SCRIPT()
     val state = { url: "/threads/7", data: data, user: null, csrf: "tok", theme: "light" }
     val out = page(titleOf(data), "light", shown("/threads/7", data), state)
 
-    assertEq(len(split(out, "</script>")), 3)
+    assertEq(split(out, "</script>").length, 3)
     assert(contains(out, "\\u003c/script>"))
 
 @test

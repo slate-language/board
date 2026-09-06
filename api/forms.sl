@@ -85,7 +85,7 @@ lifted(shape: shape, h, req: object, values)
 
     val bad = shape.mismatch(fields)
 
-    if len(bad) != 0
+    if bad.length != 0
         return problem(400, "Bad Request", "the form does not fit " + shape.name(),
             { instance: req.path, mismatch: bad })
 

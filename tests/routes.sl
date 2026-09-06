@@ -146,7 +146,7 @@ async THE_SORT_THE_FILTER_AND_THE_SEARCH_ARE_READ_OFF_THE_QUERY_STRING()
 async A_PAGE_PAST_THE_LAST_ONE_IS_EMPTY_AND_STILL_SAYS_HOW_MANY_THERE_ARE()
     val said = doc(await it.at.asJson("/?size=1&page=7"))
 
-    assertEq(len(said.data.threads.rows), 0)
+    assertEq(said.data.threads.rows.length, 0)
     assertEq(said.data.threads.total, 2)
     assertEq(said.data.threads.page, 7)
 
@@ -250,7 +250,7 @@ async A_FORM_THAT_DOES_NOT_FIT_ITS_DECLARATION_IS_A_400_LISTING_EVERY_REASON()
 
     assertEq(status(bad), 400)
     assertEq(said.title, "Bad Request")
-    assertEq(len(said.mismatch), 2)
+    assertEq(said.mismatch.length, 2)
     assertEq(said.mismatch[0].path, "name")
     assertEq(said.mismatch[1].path, "password")
 
@@ -283,7 +283,7 @@ async SIGNING_OUT_ENDS_THE_SESSION()
 
     assertEq(doc(await it.at.asJson("/")).user.name, "ada")
 
-    assertEq(len(await it.sessions.live()), 1)
+    assertEq((await it.sessions.live()).length, 1)
 
     await it.at.form("/signout", { back: "/" })
 
@@ -292,7 +292,7 @@ async SIGNING_OUT_ENDS_THE_SESSION()
     // **Signing out revokes rather than merely forgetting.** The cookie is cleared *and* the entry is
     // deleted from the store, which is the half a signed cookie holding the whole session cannot do:
     // there, a cookie somebody kept a copy of goes on working until it expires.
-    assertEq(len(await it.sessions.live()), 0)
+    assertEq((await it.sessions.live()).length, 0)
 
 // -- the token --------------------------------------------------------------------------------------
 
@@ -382,7 +382,7 @@ async A_REPLY_IS_POSTED_AND_THE_THREAD_COUNTS_IT()
 
     val said = doc(await it.at.asJson("/threads/1"))
 
-    assertEq(len(said.data.replies), 2)
+    assertEq(said.data.replies.length, 2)
     assertEq(said.data.replies[1].body, "and hello back")
     assertEq(said.data.thread.replies, 2)
 
@@ -593,7 +593,7 @@ async THE_DISPLAY_COPY_IS_A_WEBP_AT_THE_WIDTH_OF_THE_COLUMN_AND_THE_ORIGINAL_IS_
     assert(shape.ok, "the display copy is a picture")
     assertEq(shape.value.width, 1536)
     assertEq(shape.value.height, 6)
-    assert(len(response(shown_).body) < len(big), "and it is smaller than what was posted")
+    assert(response(shown_).body.length < big.length, "and it is smaller than what was posted")
 
 @test
 async A_GIF_HAS_NO_DISPLAY_COPY_AND_THE_SAME_ADDRESS_ANSWERS_THE_ORIGINAL()
@@ -703,7 +703,7 @@ async A_MEMBER_MAY_DELETE_THEIR_OWN_REPLY_AND_NOT_SOMEBODY_ELSE_S()
     val mine = await it.at.form("/replies/1/delete", { back: "/threads/1" })
 
     assertEq(status(mine), 303)
-    assertEq(len(doc(await it.at.asJson("/threads/1")).data.replies), 0)
+    assertEq(doc(await it.at.asJson("/threads/1")).data.replies.length, 0)
 
     await it.at.form("/threads/1/replies", { body: "grace again" })
     await it.at.form("/signout", { back: "/" })
@@ -743,8 +743,8 @@ async AN_ADMINISTRATOR_SEES_WHO_IS_SIGNED_IN_AND_CAN_END_IT()
 
     val said = doc(await it.at.asJson("/admin"))
 
-    assertEq(len(said.data.users), 2)
-    assertEq(len(said.data.sessions), 1)
+    assertEq(said.data.users.length, 2)
+    assertEq(said.data.sessions.length, 1)
     assertEq(said.data.sessions[0].name, "ada")
 
     // **Revoking is the thing a signed cookie cannot do at all**, and it is the whole argument for a
@@ -957,7 +957,7 @@ async THE_JSON_API_ANSWERS_ROWS_AND_PROBLEM_DOCUMENTS()
 
     val one = await it.at.get("/api/threads/1")
 
-    assertEq(len(doc(one).replies), 1)
+    assertEq(doc(one).replies.length, 1)
 
     val gone = await it.at.get("/api/threads/999")
 
@@ -972,7 +972,7 @@ async THE_POLL_A_PAGE_MAKES_ASKS_ONLY_FOR_WHAT_IT_HAS_NOT_SEEN()
 
     val fresh = doc(await it.at.get("/api/threads/1/replies?after=1"))
 
-    assertEq(len(fresh.replies), 1)
+    assertEq(fresh.replies.length, 1)
     assertEq(fresh.replies[0].body, "the new one")
 
 @test

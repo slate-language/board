@@ -83,10 +83,10 @@ export board(seed: object = {}) -> object
         val page = max(1, counted(options.page ?? 1, 1))
         val kept = ordered(matching(threads, options), options.sort ?? "newest")
         val from = (page - 1) * size
-        val rows = if from >= len(kept) then [] else kept[from..<min(len(kept), from + size)]
+        val rows = if from >= kept.length then [] else kept[from..<min(kept.length, from + size)]
 
         { ok: true,
-          value: { rows: map(rows, t -> whole(users, t)), total: len(kept), page: page, size: size } }
+          value: { rows: map(rows, t -> whole(users, t)), total: kept.length, page: page, size: size } }
 
     async thread(id: integer)
         val t = byId(threads, id)

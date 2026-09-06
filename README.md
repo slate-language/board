@@ -40,7 +40,7 @@ written around. The list of what that turned up is at the end.
 
 ## Run it
 
-You need PostgreSQL and **slate 0.0.34 or later**.
+You need PostgreSQL and **slate 0.0.35 or later**.
 
 ```
 brew install slate-language/tap/slate

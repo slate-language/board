@@ -15,7 +15,7 @@
 // else -- so a failure here is read there. Two of them decide whether the page can be adopted at all,
 // because the markup a server writes has to be walkable back:
 //
-// - **Two text children in a row must not come back as one text node.** `<h2>{len(rows)} replies</h2>`
+// - **Two text children in a row must not come back as one text node.** `<h2>{rows.length} replies</h2>`
 //   is two children in the tree and `2 replies` in the markup unless the markup marks the seam. React
 //   writes a `<!-- -->` between them for exactly this reason.
 // - **A text child that is the empty string must be decided the same way by both hosts.**
@@ -165,7 +165,7 @@ async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
 
     await sleep(1)
 
-    assertEq(len(sent), 1)
+    assertEq(sent.length, 1)
     assertEq(sent[0].action, "/signout")
     assertEq(sent[0].fields._csrf, "a-token")
     assertEq(sent[0].fields.back, "/threads/7")

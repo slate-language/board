@@ -125,7 +125,7 @@ Root(props: object) =
         if was.data.page != "thread" then return null
 
         val rows = was.data.replies
-        val after = if len(rows) == 0 then 0 else rows[len(rows) - 1].id
+        val after = if rows.length == 0 then 0 else rows[rows.length - 1].id
         val where = "/api/threads/" + string(was.data.thread.id) + "/replies?after=" + string(after)
         val got = await fetch(where, { headers: { Accept: "application/json" } })
 
@@ -137,7 +137,7 @@ Root(props: object) =
 
         val fresh = parsed.value.replies ?? []
 
-        if len(fresh) == 0 then return null
+        if fresh.length == 0 then return null
 
         val now = latest.current
 

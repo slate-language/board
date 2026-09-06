@@ -41,7 +41,7 @@ export val Card = memo(card)
 excerpt(body: string) -> string =
     val one = replace(trim(body), "\n", " ")
 
-    if len(one) <= 160 then one else one[0..<160] + "..."
+    if one.length <= 160 then one else one[0..<160] + "..."
 
 // -- what the store keeps, as what a component takes ------------------------------------------------
 

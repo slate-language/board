@@ -88,7 +88,7 @@ export List(props: object) =
     // **A block `if` is bound to a name before the tag rather than written inside a hole.** A hole
     // takes an expression, and slate's block `if` is a statement -- so this is the shape every
     // either-or in this file has.
-    val cards = if len(rows) == 0
+    val cards = if rows.length == 0
         <EmptyState title="Nothing here yet" detail="No thread matches what you asked for.">
             <Link to="/new">Start one</Link>
         </EmptyState>
@@ -178,7 +178,7 @@ ThreadView(props: object) =
             <Original file={t.photo}/>
             {drop}
         </Post>
-        <h2 class="count">{len(rows)} replies</h2>
+        <h2 class="count">{rows.length} replies</h2>
         <PostList>{rows.map(one)}</PostList>
         {below}
     </div>
@@ -248,12 +248,12 @@ export Profile(props: object) =
         <Timestamp at={r.made}/></li>
     val picture = if itsMe then <AvatarForm/> else null
 
-    val started = if len(threads) == 0
+    val started = if threads.length == 0
         <p class="empty">None yet.</p>
     else
         <ul class="own">{threads.map(aThread)}</ul>
 
-    val said = if len(replies) == 0
+    val said = if replies.length == 0
         <p class="empty">None yet.</p>
     else
         <ul class="own">{replies.map(aReply)}</ul>
@@ -301,7 +301,7 @@ export Admin(props: object) =
         <td><Doing class="drop" action={"/admin/sessions/" + s.id + "/revoke"} label="Revoke"
                    tone="danger"/></td>
     </tr>
-    val open = if len(live) == 0
+    val open = if live.length == 0
         <p class="empty">Nobody is signed in.</p>
     else
         <div class="rows">
