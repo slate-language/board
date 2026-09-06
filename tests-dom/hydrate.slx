@@ -57,6 +57,10 @@ reply(id: integer, said: string) -> object =
 // built from data, components with contexts above them, forms, and a fragment in the header.
 val Data = { page: "thread", thread: thread(), replies: [reply(1, "first"), reply(2, "second")] }
 
+// The front page, which is the one carrying a sort control.
+val Listed = { page: "list", threads: { rows: [thread()], total: 1, page: 1, size: 20 },
+               tags: [{ tag: "slate", count: 1 }], sort: "newest", tag: "", q: "" }
+
 var sent = []
 
 // Where the page's own navigator was asked to go, which is `client.slx`'s `go` seen from outside.
@@ -233,6 +237,47 @@ Live(props: object) =
 
     out
 
+// The front page under that same navigator, which is where a sort order is chosen.
+//
+// **A SORT ORDER IS A REAL ANCHOR AND THE CLICK IS TAKEN**, so what is asked here is the whole chain
+// a reader sets off: `mortar`'s `choice` decides the click is one the page may have, `lath`'s
+// `useSearch` rewrites the query against the address bar, and the movement reaches the navigator the
+// page installed rather than a hook belonging to the control.
+//
+// **WHAT THIS CANNOT SEE IS WHAT THE MOVEMENT COSTS**, which is where the defect it was written for
+// actually lived. `client.slx` answers a movement by fetching the new rows, and a browser's `fetch`
+// is a method of the window that refuses a call made on any other receiver -- so slate's runtime,
+// which kept the host's `fetch` in a record and called it as a member of that record, made no request
+// at all in Chrome and answered `cannot reach ...: Illegal invocation`. node's `fetch` never looks at
+// its receiver, so every host this suite has is blind to it; the assertion belongs in slate, where it
+// now is, and this is the closest thing here: the address moved, and it moved through the page.
+Sorting(props: object) =
+    val [url, setUrl] = useState("/")
+
+    go(to, opts = null)
+        push(moved, to)
+        setUrl(to)
+
+    wire()
+        navigateWith(go)
+
+        null
+
+    useEffect(wire, [])
+
+    val out = <App nav={{ url: url, go: go, replace: go }} data={Listed} user={Ada} csrf="a-token"
+                   send={sending}/>
+
+    out
+
+// The same page as the server would have sent it, with the address bar at the front page -- which is
+// what `useSearch` rewrites the chosen order against.
+sorting() -> string
+    pushPath("/")
+
+    html(mount(<Provider store={createStore()}><Sorting/></Provider>, stringHost()))
+end sorting
+
 // What the server would have sent for the page above, with the address bar put where that page is.
 //
 // **`mount(<Live/>)` and not `Live({})`**: this one has hooks, and a component called outside a render
@@ -264,6 +309,21 @@ async A_LINK_IT_ATTACHED_REACHES_THE_PAGES_OWN_NAVIGATOR()
     // page rather than the reload it looks like from the outside.
     assertEq(moved, ["/new"])
     assert(prevented(), "the browser was told not to follow the link")
+
+@test
+async CHOOSING_A_SORT_ORDER_REACHES_THE_PAGES_OWN_NAVIGATOR()
+    at(sorting())
+
+    hydrate(<Provider store={createStore()}><Sorting/></Provider>, domHost("#app"))
+
+    click("a[href=\"/?sort=busiest\"]")
+
+    await sleep(1)
+
+    // **The whole address and not the one member that changed**: choosing an order keeps the tag,
+    // the search text and the page the reader was on, and `null` is how `page` comes off the query.
+    assertEq(moved, ["/?sort=busiest"])
+    assert(prevented(), "the browser was told not to follow the sort control")
 
 @test
 async A_THEME_TOGGLE_WRITES_THE_COOKIE()
