@@ -25,10 +25,13 @@ on. `client.slx` is the only file in the repository that knows there is a browse
 is the only half that knows there is a database. Neither half imports the other's host.
 
 **Every page that has anything to say works with no JavaScript.** Each form is a real
-`<form method="post">`, each link is a real `<a href>`, the sort, the filter, the pager and the
-theme are all in the URL, and the server renders the markup. What the browser program adds is the
-thing markup cannot carry: it adopts the page it was sent, installs the listeners, and from then on
-a link costs the rows and nothing else — no markup, no stylesheet, no second copy of the header.
+`<form method="post">`, each link is a real `<a href>`, and the sort, the filter and the pager are
+all in the URL, so the server renders the right markup on the very first request. The theme is the
+one thing that needs the script: it lives in a cookie the server reads before it renders, and a
+reader changes it with a plain button calling a setter, since a copied URL should carry nothing
+about who is reading it. What the browser program adds is the thing markup cannot carry: it adopts
+the page it was sent, installs the listeners, and from then on a link costs the rows and nothing
+else — no markup, no stylesheet, no second copy of the header.
 
 **And one suite runs on two hosts.** A request is a value and a handler is a function of it, so
 `await app.handle(request(…))` is the whole harness — no socket, no database, nothing to start.
@@ -80,6 +83,10 @@ twice does what running it once did. `scripts/build.sl` writes `public/app.js`, 
 the only thing under `public/` and the only thing the board serves off the disk; the stylesheets
 travel inside the program. The board runs without it and loses only its live replies and its
 reload-free posts.
+
+**`public/app.js` is not tracked in git.** A `git pull` never touches it, so a server left running
+after one is still serving yesterday's browser program — `slate scripts/build.sl` again is what
+makes the change real.
 
 | | |
 |---|---|
@@ -166,7 +173,11 @@ page asks for on every navigation, and it is what makes `curl` a first-class cli
 ```slate
 export answered(req: object, data: object, status: integer = 200) -> object
     val at = addressOf(req)
-    val state = { url: at, data: data, user: whoIs(req), csrf: req.csrf ?? "", theme: themeOf(at) }
+    val state = { url: at,
+                  data: data,
+                  user: whoIs(req),
+                  csrf: req.csrf ?? "",
+                  theme: themeOf(req) }
 
     if wantsJson(req) then return json(state, status)
 
@@ -175,16 +186,24 @@ export answered(req: object, data: object, status: integer = 200) -> object
     val markup = if !rendersOnServer(data)
         ""
     else
-        html(mount(App({ nav: { url: state.url, go: null, replace: null }, data: data,
-                         user: state.user, csrf: state.csrf, send: null })))
+        val root = App({ nav: { url: state.url, go: null, replace: null },
+                         data: data,
+                         user: state.user,
+                         csrf: state.csrf,
+                         theme: state.theme,
+                         send: null })
+
+        html(mount(createElement(Provider, { store: createStore() }, [root])))
 
     { status: status,
       headers: { "Content-Type": "text/html; charset=utf-8" },
       body: page(titleOf(data), state.theme, markup, state) }
 ```
 
-`app/shell.sl` writes the document around that markup, and the record it was rendered from goes into
-the page beside it:
+`createStore()` plus `Provider` gives this request its own atom, so two requests rendered by one
+process never see each other's theme — `mortar`'s own README says this is load-bearing and not a
+nicety. `app/shell.sl` writes the document around that markup, and the record it was rendered from
+goes into the page beside it:
 
 ```slate
 val tail = "</div>
@@ -295,10 +314,16 @@ over on one attribute:
 
 ![The same list, dark](docs/screenshots/thread-list-dark.png)
 
-**The theme is `?theme=dark` in the address** — no cookie, no `/theme` route. The server reads it off
-the request and renders the right colours the first time, so there is no first paint in the wrong
-ones and nothing for a hydrating page to correct. It is an ordinary link, so it works on a page whose
-script never ran, and a `?theme` nobody recognises is a light page rather than a fault.
+**The theme is an atom in `mortar`'s `Theme`, seeded per request from a `theme` cookie** — no
+`/theme` route, and nothing in the address. `api/render.sl`'s `themeOf(req)` reads
+`req.cookies.theme` and renders under a fresh `createStore()` and `Provider`, one per request, so two
+pages rendered by the same process never see each other's theme; an unknown or missing value is a
+light page rather than a fault, same as an unrecognised address parameter used to be. There is no
+first paint in the wrong colours and nothing for a hydrating page to correct, because the server
+already knows the reader's theme before it renders a byte. The browser writes the cookie back itself
+— `useTheme()`'s setter, `Path=/`, `SameSite=Lax`, a year — the moment a reader toggles it, so the
+very next request already carries the choice whatever page it lands on. A copied URL carries nothing
+about the theme, which is the point of moving it off the address in the first place.
 
 The layout is the tokens' own, so a narrow window is the same page:
 
