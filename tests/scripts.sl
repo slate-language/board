@@ -5,9 +5,10 @@
 // unconditional `main()`, exactly as `migrate.sl` and `build.sl` do, so importing it here would try
 // to start a server the moment this file loaded.
 
-import { run } from slate:process
+import { env, run } from slate:process
 
 import { DefaultPort, commandFrom, portOf, urlFor } from "../scripts/dbLogic.sl"
+import { configuration } from "../api/postgres.sl"
 
 // **`slate:process`'s `run` is not on the JavaScript back end yet, and a program has no name for
 // which host it is running on** -- so, exactly as `tests/postgres.sl` asks by trying whether a
@@ -63,3 +64,13 @@ async AN_UNKNOWN_SUBCOMMAND_EXITS_1_WITH_A_USAGE_LINE()
     assert(said.ok)
     assertEq(said.value.status, 1)
     assert(contains(said.value.out, "usage:"))
+
+@test
+WITH_NOTHING_SET_THE_BOARD_OPENS_A_DATABASE_NAMED_BOARD()
+    // **`psql` with nothing set opens a database named after the user; this program opens `board`**,
+    // which is the one `scripts/db.sl` makes. Everything else -- host, port, user -- is still left to
+    // `pg`'s own reading of the environment, so only the database is named here.
+    val got = configuration()
+
+    assert(got is object)
+    assertEq(got.database, env("PGDATABASE") ?? "board")

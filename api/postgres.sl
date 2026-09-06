@@ -22,9 +22,12 @@ import { env } from slate:process
 // What to connect with, read from the environment. **A deployment already carries this**, and a
 // program that invented names of its own for it would be one more thing to configure.
 //
-// With nothing set, `pg` reads what `psql` reads -- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`,
-// `PGDATABASE` -- so a machine where `psql` connects is a machine where this connects.
-export configuration() = env("PG_URL") ?? (env("DATABASE_URL") ?? {})
+// With nothing set, `pg` reads what `psql` reads -- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` --
+// so a machine where `psql` connects is a machine where this connects. **The one default that is the
+// board's rather than `psql`'s is the database's name**: `psql` with nothing set opens a database
+// named after the user, and this program is the board, so it opens `board` -- which is what
+// `scripts/db.sl` makes. `PGDATABASE` still wins where it is set, as it does for every other tool.
+export configuration() = env("PG_URL") ?? (env("DATABASE_URL") ?? { database: env("PGDATABASE") ?? "board" })
 
 // `postgres(config)` -- connect and answer the store, or say why not.
 //

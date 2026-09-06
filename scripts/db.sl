@@ -116,7 +116,7 @@ async startCommand()
                                               string(migrated.value.status))
 
     if port == DefaultPort
-        print("PG_URL needs no export: pg's own default is 127.0.0.1:" + string(DefaultPort))
+        print("PG_URL needs no export: the board opens 127.0.0.1:" + string(DefaultPort) + "/board on its own")
     else
         print("export PG_URL=" + url)
 

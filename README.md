@@ -94,7 +94,7 @@ makes the change real.
 
 | | |
 |---|---|
-| `PG_URL` | `postgres://user:secret@host/database`. With none, `pg` connects wherever `psql` would |
+| `PG_URL` | `postgres://user:secret@host/database`. With none, `pg` connects wherever `psql` would, to a database named `board` (`PGDATABASE` overrides that) |
 | `PG_PORT` | which port `scripts/db.sl` starts its own PostgreSQL on; `5432` where unset |
 | `PORT` | `0` asks the kernel for one, which is what the default does; the server says which |
 | `BOARD_SECRET` | the key a session cookie is signed with. **Set it**: a generated one signs everybody out on every restart, and the server says so on `stderr` |
