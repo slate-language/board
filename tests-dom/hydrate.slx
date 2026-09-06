@@ -32,8 +32,10 @@
 // the workaround to everybody who read it. All four were `lath` defects this board found; `lath`
 // 0.5.1 answers all four, which is why these run.
 
-import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
+import { createElement, Fragment, mount, hydrate, html, stringHost, useEffect, useState } from lath
 import { domHost } from lath/dom
+import { navigateWith } from lath/router
+import { pushPath } from slate:dom
 
 import { App } from "../app/pages.slx"
 import { rendersOnServer } from "../app/shell.sl"
@@ -56,6 +58,9 @@ val Data = { page: "thread", thread: thread(), replies: [reply(1, "first"), repl
 
 var sent = []
 
+// Where the page's own navigator was asked to go, which is `client.slx`'s `go` seen from outside.
+var moved = []
+
 // What the page's own program does instead of letting the browser post a form.
 async sending(action: string, fields: object) -> object
     push(sent, { action: action, fields: fields })
@@ -76,6 +81,7 @@ markup() -> string = html(mount(Page({}), stringHost()))
 @setup
 anEmptyPage()
     sent = []
+    moved = []
 
     at("")
 
@@ -182,6 +188,83 @@ async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
     await sleep(1)
 
     assert(!prevented(), "the browser posts it, exactly as it would with no script on the page")
+
+// -- the other half of what hydration attached ------------------------------------------------------
+
+// **`client.slx`'s `Root`, in the two things about it these tests can hold.** It says what following a
+// link means -- because on this board that costs a fetch and a `<html data-theme>` and not only a
+// view -- and it keeps the URL in a `useState` of its own. Every page under it is the same `App` the
+// server rendered.
+//
+// **What this catches is a page that moves its address bar and then does nothing.** Every control in
+// the header that asks for the query -- the theme choice here, the sort and the tag list on the front
+// page -- reads it through `lath/dom`'s `usePath`, and until `lath` 0.5.2 asking installed a navigator
+// as a side effect: the last control to render owned the page's navigation, so a click re-rendered
+// that control and the page never heard. It was invisible to every test here, because nothing drove a
+// click through a `Link` with a page's own navigator installed, and invisible in `curl`, because the
+// server was answering correctly the whole time.
+Live(props: object) =
+    val [url, setUrl] = useState("/threads/7")
+
+    go(to, opts = null)
+        push(moved, to)
+        setUrl(to)
+
+    wire()
+        navigateWith(go)
+
+        null
+
+    useEffect(wire, [])
+
+    val out = <App nav={{ url: url, go: go, replace: go }} data={Data} user={Ada} csrf="a-token"
+                   send={sending}/>
+
+    out
+
+// What the server would have sent for the page above, with the address bar put where that page is.
+//
+// **`mount(<Live/>)` and not `Live({})`**: this one has hooks, and a component called outside a render
+// has no instance to keep them on.
+//
+// **The address bar matters here and not in the tests above**, because a control that rewrites the
+// query -- the theme choice -- builds the address it writes out of the one the page is really at. On
+// the board the two are kept in step by `go`, which pushes before it sets; a test that planted the
+// markup and left the address bar at `/` would be asking about a page that cannot happen.
+living() -> string =
+    pushPath("/threads/7")
+
+    html(mount(<Live/>, stringHost()))
+
+@test
+async A_LINK_IT_ATTACHED_REACHES_THE_PAGES_OWN_NAVIGATOR()
+    at(living())
+
+    hydrate(<Live/>, domHost("#app"))
+
+    click("a[href=\"/new\"]")
+
+    await sleep(1)
+
+    // **And the browser was told not to follow it**, which is what makes this a movement inside the
+    // page rather than the reload it looks like from the outside.
+    assertEq(moved, ["/new"])
+    assert(prevented(), "the browser was told not to follow the link")
+
+@test
+async AND_SO_DOES_A_CONTROL_THAT_ONLY_WANTED_THE_QUERY()
+    // **The theme control rewrites the address through `useSearch`**, which is the same navigator by
+    // another door -- and it is the control that used to take the page's navigation over. The address
+    // it writes keeps the page it is on, which is what `withSearch` over `nav.url` is for.
+    at(living())
+
+    hydrate(<Live/>, domHost("#app"))
+
+    click("a[href=\"/threads/7?theme=dark\"]")
+
+    await sleep(1)
+
+    assertEq(moved, ["/threads/7?theme=dark"])
 
 @test
 MARKUP_THAT_DOES_NOT_MATCH_IS_A_FAULT_NAMING_THE_PATH_AND_BOTH_SIDES()

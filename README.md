@@ -596,6 +596,8 @@ follows.
 | A text child that is the empty string vanished, so `<textarea>{value ?? ""}</textarea>` disagreed across hosts | `lath` | 0.5.1 decides it in the tree instead |
 | `value` was set as a property without comparing what was there, and `rows={5}` was compared against the page's `"5"` — mutations on a hydration that should record none | `lath` | 0.5.1 compares before it writes |
 | An attribute whose value is `false` wrote `required="false"`, which a browser reads as *required* | `lath` | 0.5.1: `false` and `null` are no attribute, which is HTML's own rule |
+| Asking for the query installed a navigator, so the header's theme control quietly took over what following a link meant — in a real browser the address bar moved and the page never re-rendered | `lath` | 0.5.2: a page's own `navigateWith` outranks the built-in one |
+| The same control took the back button, `slate:dom` keeping one `onNavigate` handler for the whole program | `lath` | 0.5.3: `usePath` does not listen where a page installed a navigator |
 | `multipart` read the body as text, so a `.png` was the same value as no body at all | `sluice` | 0.4.0 reads `req.bytes` |
 | A refused upload's media type was under the problem document's own `type`, which RFC 9457 defines as the *problem's* type | `sluice` | 0.4.1 moved it to `mediaType` |
 | `Theme` faulted on a `?theme` word it did not know — and a query string is something anybody may type | `mortar` | 0.2.1 reads an unknown word as the default |
@@ -603,7 +605,16 @@ follows.
 | `slate:fs` could write text and not bytes, so a photograph could not be stored | slate | 0.0.31 added `writeBytes` |
 | Argon2id ran nowhere but the interpreter, so six tests skipped under `--js` | slate | 0.0.32 put `argon2`/`argon2Verify` in `slate:crypto` on both back ends |
 
-Three are still open, and each is a bullet rather than a workaround:
+Four are still open, and each is a bullet rather than a workaround:
+
+- **`fetch` refuses a relative URL**, which is the ordinary thing a page asks for and the only thing a
+  page can ask for: nothing in a browser program knows its own origin. `fetch("/signup?format=json")`
+  answers `{ ok: false, error: "`/signup?format=json` is not an http or https URL" }` — the rule
+  `parse_url` applies for a *server* making a request, read again in a host where the address bar is
+  the base. So the record a followed link costs is never fetched: a link to a page whose record the
+  browser already holds renders correctly, and a link to one it does not — the composer, a profile, a
+  thread — sits on *Fetching…*, which is what `Pending` renders while the values are on their way.
+  Writing `location().origin + to` here would be exactly the workaround this table exists to avoid.
 
 - **`slate:image` is not on the JavaScript back end.** So a display copy is something this board makes
   under the interpreter and simply does not make under node — which is why `?display` falls back to

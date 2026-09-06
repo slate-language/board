@@ -17,7 +17,12 @@
         // **0.5.1 is what makes this board hydratable**: adjacent text children keep their seam, an
         // empty text child stands for no node in either host, and an attribute whose value is
         // `false` or `null` is written by neither.
-        lath: { git: "github.com/slate-language/lath", version: "0.5.1" },
+        // **0.5.2 AND 0.5.3 ARE WHAT MAKE A HYDRATED PAGE MOVE**: `client.slx` says what following a
+        // link means with `navigateWith` and listens for the back button with `onNavigate`, and every
+        // control in the header that asks for the query took both of those over as a side effect of
+        // asking -- so a click moved the address bar and re-rendered one control while the page sat
+        // there, and the back button did nothing at all.
+        lath: { git: "github.com/slate-language/lath", version: "0.5.3" },
         // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.2.1 is what took
         // two workarounds out of this board**: its `Theme`'s setter keeps the rest of the query, so
         // a theme toggle no longer throws away a filter and a sort, and a `?theme` it does not know
