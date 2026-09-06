@@ -22,9 +22,10 @@
 
 import { createElement, Fragment, hydrate, mount, useEffect, useRef, useState } from lath
 import { domHost } from lath/dom
-import { navigateWith, parseSearch, searchOf } from lath/router
+import { navigateWith } from lath/router
 import { attribute, byId, nodeText, onNavigate, pushPath, query, replacePath,
     setAttribute } from slate:dom
+import { useTheme } from mortar
 
 import { App } from "./app/pages.slx"
 import { rendersOnServer } from "./app/shell.sl"
@@ -188,23 +189,26 @@ Root(props: object) =
     // **`<html data-theme>` is the board's, not the framework's.** `mortar`'s `Theme` paints the
     // element it renders and says nothing about the document, so the canvas behind an overscroll and
     // the document's own scrollbar follow the theme only because this attribute is kept in step with
-    // the address. `app/shell.sl` writes it on the way out and this writes it on every change.
+    // the atom -- `app/shell.sl` writes it from the cookie on the way out and this writes it whenever
+    // a `useTheme()` toggle anywhere in the tree below changes it.
     //
     // **It compares before it writes**, which is the rule every host function in `lath` follows and is
     // what keeps a page adopting the server's markup from making a mutation on the way in: the value
     // is already the right one.
+    val theme = useTheme()[0]
+
     themed()
         val root = query("html")
-        val now = if (parseSearch(searchOf(url)).theme ?? "") == "dark" then "dark" else "light"
 
-        if root != null && attribute(root, "data-theme") != now then setAttribute(root, "data-theme", now)
+        if root != null && attribute(root, "data-theme") != theme then setAttribute(root, "data-theme", theme)
 
         null
 
-    useEffect(themed, [url])
+    useEffect(themed, [theme])
 
     val nav = { url: url, go: go, replace: replace }
-    val out = <App nav={nav} data={state.data} user={state.user} csrf={state.csrf} send={send}/>
+    val out = <App nav={nav} data={state.data} user={state.user} csrf={state.csrf}
+                  theme={start.theme} send={send}/>
 
     out
 

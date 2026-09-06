@@ -74,9 +74,10 @@ body {
         }
     }
 
-    /* The light/dark control. **Smaller than the segmented control in the page**, a header being a
-     * row of things a reader is not looking at. */
-    & .m-me .theme .m-seg {
+    /* The light/dark control -- a plain `Button`, since the theme lives in a cookie now and not in
+     * a link a script-less reader could follow. **Smaller than a header button would be by
+     * default**, a header being a row of things a reader is not looking at. */
+    & .m-me .theme {
         font-size: var(--m-text-xs);
         padding: var(--m-space-1) var(--m-space-3);
     }

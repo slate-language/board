@@ -32,10 +32,11 @@
 // the workaround to everybody who read it. All four were `lath` defects this board found; `lath`
 // 0.5.1 answers all four, which is why these run.
 
-import { createElement, Fragment, mount, hydrate, html, stringHost, useEffect, useState } from lath
+import { createElement, createStore, Fragment, mount, hydrate, html, Provider, stringHost,
+    useEffect, useState } from lath
 import { domHost } from lath/dom
 import { navigateWith } from lath/router
-import { pushPath } from slate:dom
+import { cookie, pushPath } from slate:dom
 
 import { App } from "../app/pages.slx"
 import { rendersOnServer } from "../app/shell.sl"
@@ -74,7 +75,12 @@ Page(props: object) =
     out
 
 // What the server would have sent.
-markup() -> string = html(mount(Page({}), stringHost()))
+//
+// **A FRESH `createStore()` PER CALL.** `mortar`'s theme atom lives in `defaultStore()` where
+// nothing else provides one, and that store is one module-level value shared by every render in this
+// process -- so a test that toggled it and left it dark would otherwise be what a later, unrelated
+// test's "light" page hydrates against.
+markup() -> string = html(mount(<Provider store={createStore()}><Page/></Provider>, stringHost()))
 
 // **The page put back between tests**, so that what one test planted is never what the next one
 // adopts. `sent` goes with it: a submit recorded by one test would otherwise be counted by the next.
@@ -117,7 +123,7 @@ async A_HYDRATED_BOARD_MAKES_NO_MUTATIONS_AT_ALL()
     val planted = shown()
     val before = mutations()
 
-    hydrate(<Page/>, domHost("#app"))
+    hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
 
     await sleep(1)
 
@@ -141,7 +147,7 @@ async A_MOUNTED_RENDER_INTO_THE_SAME_MARKUP_RECORDS_PLENTY()
 
     val before = mutations()
 
-    mount(<Page/>, domHost("#app"))
+    mount(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
 
     await sleep(1)
 
@@ -153,7 +159,7 @@ async THE_FORMS_IT_ATTACHED_ACTUALLY_SUBMIT_WITHOUT_A_RELOAD()
     // not have is a single event listener, and the tree that was walked is what installs them.
     at(markup())
 
-    hydrate(<Page/>, domHost("#app"))
+    hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
 
     click("form.out", "submit")
 
@@ -179,9 +185,9 @@ async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
 
         out
 
-    at(html(mount(Plain({}), stringHost())))
+    at(html(mount(<Provider store={createStore()}><Plain/></Provider>, stringHost())))
 
-    hydrate(<Plain/>, domHost("#app"))
+    hydrate(<Provider store={createStore()}><Plain/></Provider>, domHost("#app"))
 
     click("form.out", "submit")
 
@@ -196,13 +202,18 @@ async A_PAGE_WITH_NO_SENDER_LETS_THE_BROWSER_POST_THE_FORM()
 // view -- and it keeps the URL in a `useState` of its own. Every page under it is the same `App` the
 // server rendered.
 //
-// **What this catches is a page that moves its address bar and then does nothing.** Every control in
-// the header that asks for the query -- the theme choice here, the sort and the tag list on the front
-// page -- reads it through `lath/dom`'s `usePath`, and until `lath` 0.5.2 asking installed a navigator
-// as a side effect: the last control to render owned the page's navigation, so a click re-rendered
-// that control and the page never heard. It was invisible to every test here, because nothing drove a
-// click through a `Link` with a page's own navigator installed, and invisible in `curl`, because the
-// server was answering correctly the whole time.
+// **What this catches is a page that moves its address bar and then does nothing.** The sort and the
+// tag list on the front page read the query through `lath/dom`'s `usePath`, and until `lath` 0.5.2
+// asking installed a navigator as a side effect: the last control to render owned the page's
+// navigation, so a click re-rendered that control and the page never heard. It was invisible to every
+// test here, because nothing drove a click through a `Link` with a page's own navigator installed, and
+// invisible in `curl`, because the server was answering correctly the whole time.
+//
+// **The theme choice used to be exactly this kind of control and is not any more.** `mortar` 0.3.2
+// moved it out of the query entirely -- it is a plain `Button` calling `useTheme()`'s setter, with no
+// `useSearch` and nothing to ask the router for -- so it no longer stands in for this bug. What is
+// worth pinning about it now is the opposite direction: that a page kept moving under a reader who
+// had already chosen dark does not lose that choice, which is the test below.
 Live(props: object) =
     val [url, setUrl] = useState("/threads/7")
 
@@ -234,13 +245,16 @@ Live(props: object) =
 living() -> string =
     pushPath("/threads/7")
 
-    html(mount(<Live/>, stringHost()))
+    // **A fresh store here too**, for the same reason `markup()` above takes one: neither side of a
+    // hydration pair passes a `theme` prop, so both have to start from the atom's own default and
+    // not from whatever an earlier test's toggle left in `defaultStore()`.
+    html(mount(<Provider store={createStore()}><Live/></Provider>, stringHost()))
 
 @test
 async A_LINK_IT_ATTACHED_REACHES_THE_PAGES_OWN_NAVIGATOR()
     at(living())
 
-    hydrate(<Live/>, domHost("#app"))
+    hydrate(<Provider store={createStore()}><Live/></Provider>, domHost("#app"))
 
     click("a[href=\"/new\"]")
 
@@ -252,19 +266,43 @@ async A_LINK_IT_ATTACHED_REACHES_THE_PAGES_OWN_NAVIGATOR()
     assert(prevented(), "the browser was told not to follow the link")
 
 @test
-async AND_SO_DOES_A_CONTROL_THAT_ONLY_WANTED_THE_QUERY()
-    // **The theme control rewrites the address through `useSearch`**, which is the same navigator by
-    // another door -- and it is the control that used to take the page's navigation over. The address
-    // it writes keeps the page it is on, which is what `withSearch` over `nav.url` is for.
-    at(living())
+async A_THEME_TOGGLE_WRITES_THE_COOKIE()
+    at(markup())
 
-    hydrate(<Live/>, domHost("#app"))
+    hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app"))
 
-    click("a[href=\"/threads/7?theme=dark\"]")
+    click("button[aria-label=\"Theme\"]")
 
     await sleep(1)
 
-    assertEq(moved, ["/threads/7?theme=dark"])
+    assertEq(cookie("theme"), "dark")
+
+@test
+async A_DARK_THEME_SURVIVES_A_CLIENT_NAVIGATION()
+    // **The theme is an atom now and not a query parameter**, so nothing about following a link
+    // could touch it. `Live` is a stand-in for navigation alone and does not reproduce `client.slx`'s
+    // own `<html data-theme>` sync, so what is asked here is `Theme`'s own rendered element, which
+    // `App` always carries.
+    at(living())
+
+    hydrate(<Provider store={createStore()}><Live/></Provider>, domHost("#app"))
+
+    click("button[aria-label=\"Theme\"]")
+
+    await sleep(1)
+
+    assertEq(contains(shown(), ">Light</button>"), true)
+    assertEq(contains(shown(), "class=\"mortar board\" data-theme=\"dark\""), true)
+
+    // **The router moving the page must not be what decides the colour.** `A_LINK_IT_ATTACHED_
+    // REACHES_THE_PAGES_OWN_NAVIGATOR` above proves the click above reaches `go`; this asks what
+    // happens to the atom while it does, which is nothing at all.
+    click("a[href=\"/new\"]")
+
+    await sleep(1)
+
+    assertEq(moved, ["/new"])
+    assertEq(contains(shown(), "class=\"mortar board\" data-theme=\"dark\""), true)
 
 @test
 MARKUP_THAT_DOES_NOT_MATCH_IS_A_FAULT_NAMING_THE_PATH_AND_BOTH_SIDES()
@@ -280,7 +318,7 @@ MARKUP_THAT_DOES_NOT_MATCH_IS_A_FAULT_NAMING_THE_PATH_AND_BOTH_SIDES()
     // boundary on the page, so a mismatch there is the one this test means to describe.
     at(markup().replace("<a class=\"m-brand\"", "<b class=\"m-brand\""))
 
-    val said = fell(() -> hydrate(<Page/>, domHost("#app")))
+    val said = fell(() -> hydrate(<Provider store={createStore()}><Page/></Provider>, domHost("#app")))
 
     assert(contains(said, "the page does not match what was rendered"))
     assert(contains(said, "wants <a>"))
@@ -311,7 +349,7 @@ async A_CLIENT_ONLY_PAGE_IS_BUILT_INTO_AN_EMPTY_CONTAINER()
     // page -- `shown()` being the container itself and not its children.
     assertEq(shown(), "<div id=\"app\"></div>")
 
-    mount(<Blank/>, domHost("#app"))
+    mount(<Provider store={createStore()}><Blank/></Provider>, domHost("#app"))
 
     await sleep(1)
 
@@ -332,4 +370,4 @@ async HYDRATING_AN_EMPTY_CONTAINER_IS_A_FAULT_WHICH_IS_WHY_ONE_FUNCTION_DECIDES(
     // is asked by `api/render.sl` and by `client.slx` so that neither can decide it alone.
     //
     // **The container is empty because the setup emptied it**, which is what this page really gets.
-    assertFaults(() -> hydrate(<Blank/>, domHost("#app")))
+    assertFaults(() -> hydrate(<Provider store={createStore()}><Blank/></Provider>, domHost("#app")))

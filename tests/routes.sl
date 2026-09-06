@@ -757,33 +757,35 @@ async AN_ADMINISTRATOR_SEES_WHO_IS_SIGNED_IN_AND_CAN_END_IT()
 // -- the theme ------------------------------------------------------------------------------------------
 
 @test
-async THE_THEME_IS_IN_THE_ADDRESS_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDERS()
+async THE_THEME_IS_A_COOKIE_AND_THE_SERVER_ALREADY_KNOWS_IT_WHEN_IT_RENDERS()
     val first = await it.at.get("/")
 
     assert(shows(first, "data-theme=\"light\""))
 
-    // **No form, no cookie and no second request**: the choice is a link, so this is the same GET
-    // anybody could have typed or bookmarked.
-    val dark = await it.at.get("/?theme=dark")
+    // **The jar carries the choice from here on**, so the very next request -- to any page -- already
+    // renders in the right colour with no query string and no flash.
+    it.at.put("theme", "dark")
+
+    val dark = await it.at.get("/")
 
     assert(shows(dark, "class=\"mortar board\" data-theme=\"dark\""),
         "and the markup carries it, so nothing flashes white")
     assert(shows(dark, "<html lang=\"en\" data-theme=\"dark\">"), "on the document too")
 
-    // **The control is two real anchors**, which is what makes the theme something a reader with no
-    // script running can change.
-    assert(shows(dark, "<a class=\"m-seg\" href=\"/\">Light</a>"))
+    // **The control is one button naming the colour it goes TO**, `mortar` writing the cookie back
+    // itself through `useTheme()`'s setter rather than a link this board has to build.
+    assert(shows(dark, ">Light</button>"))
 
 @test
-async ANYTHING_THAT_IS_NOT_dark_IS_LIGHT_BECAUSE_A_QUERY_IS_SOMETHING_ANYBODY_MAY_TYPE()
-    // **Nothing here normalises the address any more**: `mortar` 0.2.1's `Theme` reads a word it does
-    // not know as the default and says nothing, so the board serves a light page for a spelling a
-    // stranger chose rather than a 500 -- and the word stays in the address it was typed into.
-    val said = await it.at.get("/?theme=chartreuse")
+async A_COOKIE_HOLDING_NEITHER_WORD_IS_LIGHT_BECAUSE_A_COOKIE_IS_SOMETHING_ANYBODY_MAY_SET()
+    // **Nothing here normalises the cookie any more**: `mortar` 0.3.2's `Theme` reads a word it does
+    // not know as the default and says nothing, so the board serves a light page for a value a
+    // stranger set by hand rather than a 500.
+    it.at.put("theme", "chartreuse")
+
+    val said = await it.at.get("/")
 
     assert(shows(said, "data-theme=\"light\""))
-    assert(shows(said, "\"url\":\"/?theme=chartreuse\""),
-        "and the page hydrates against the address a person is really on")
 
 // -- where a form says to go back to ------------------------------------------------------------------
 

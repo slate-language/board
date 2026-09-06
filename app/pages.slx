@@ -12,8 +12,8 @@
 
 import { createElement, Fragment, Boundary, memo, style, useContext } from lath
 import { Anything, Link, router, useSearch, withSearch } from lath/router
-import { Avatar, CardList, EmptyState, Live, Page, Pagination, Post, PostList, Problem,
-         Segmented, SortControls, TagList, Theme, Timestamp, useTheme } from mortar
+import { Avatar, Button, CardList, EmptyState, Live, Page, Pagination, Post, PostList, Problem,
+         SortControls, TagList, Theme, Timestamp, useTheme } from mortar
 
 import { Board, Nav, PostContext, Session } from "./context.sl"
 import { Card, Original, pictureOf, tagged } from "./parts.slx"
@@ -368,35 +368,21 @@ export val routes = [
 
 // -- the theme -------------------------------------------------------------------------------------
 
-// The two words, as the two halves of a control.
-val ThemeWords = [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]
-
-// **THE THEME IS IN THE ADDRESS, WHICH IS WHY THIS IS TWO ANCHORS AND NOT A BUTTON.** `?theme=dark`
-// is something a person can bookmark and send to somebody else, the server can read it off the
-// request and render a dark page the first time, and a reader whose script never ran can still
-// change it -- none of which is true of a choice kept in `useState` or in `localStorage`.
-//
-// **THE WRITING HALF IS `mortar`'s OWN SETTER**, which is `useTheme()`'s second half: its `set` keeps
-// the rest of the query and writes `theme=light` as the ABSENCE of the parameter, so a toggle on
-// `/?tag=slate&sort=busiest` leaves the filter and the sort exactly where they were.
-//
-// **What this control still owns is the ADDRESS EACH ANCHOR GOES TO**, and that is not a duplicate of
-// the setter: a component library has nowhere to learn what a link means, so `where` builds the href
-// with `lath/router`'s `withSearch` over the query the page is already on -- the same expression the
-// sort, the tag and the page number all write, which is what stops the two drifting apart.
+// **THE THEME IS A COOKIE NOW, WHICH IS WHY THIS IS ONE BUTTON AND NOT TWO ANCHORS.** A reader's
+// choice belongs to them and not to the page they were on, so `mortar` keeps it in `useTheme()`'s
+// atom and writes it back to a cookie itself; there is nothing here to link to any more, only a
+// setter to call.
 ThemeChoice(props: object) =
-    val nav = useContext(Nav)
-    val search = useSearch()
-    val query = search[0]
-    val chosen = useTheme()
+    val [theme, setTheme] = useTheme()
 
-    // **`theme=light` is the ABSENCE of the parameter**, so the default never rides in a URL anybody
-    // copied -- and `lath` leaves a member whose value is `null` out of the query it writes, which is
-    // what makes saying so one word.
-    where(v: string) -> string = withSearch(nav.url, query with { theme: if v == "light" then null else v })
+    toggle()
+        setTheme(if theme == "light" then "dark" else "light")
 
-    val out = <Segmented class="theme" options={ThemeWords} value={chosen[0]} href={where}
-                         onChoose={chosen[1]} label="Theme"/>
+        null
+
+    val out = <Button class="theme" variant="quiet" onClick={toggle} label="Theme">
+        {if theme == "light" then "Dark" else "Light"}
+    </Button>
 
     out
 
@@ -464,8 +450,10 @@ Frame(props: object) =
 // markup inside `<div id="app">`; `client.slx` hydrates the same element against that markup.
 //
 // **`Theme` is the outermost thing on the page**, which is what every stylesheet in `mortar` selects
-// a dark page on -- and it reads `?theme` for itself, so nothing about the colour is threaded
-// through as a prop.
+// a dark page on. **`props.theme` only SEEDS it**, once, from whatever the request's cookie said --
+// `api/render.sl` reads that cookie and `client.slx` hydrates against the same value, so the first
+// paint and the adopted page agree; `useTheme()`'s own setter, called from `ThemeChoice` below, owns
+// the colour from then on and `Theme` writes the cookie back itself when it changes.
 export App(props: object) =
     val nav = props.nav ?? { url: "/", go: null, replace: null }
     val session = { user: props.user ?? null, csrf: props.csrf ?? "" }
@@ -473,7 +461,7 @@ export App(props: object) =
         <PostContext.Provider value={{ send: props.send ?? null }}>
             <Session.Provider value={session}>
                 <Board.Provider value={props.data ?? { page: "missing", at: "/" }}>
-                    <Theme class="board">
+                    <Theme theme={props.theme ?? null} class="board">
                         <Frame>{router(routes, nav.url)}</Frame>
                     </Theme>
                 </Board.Provider>

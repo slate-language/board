@@ -4,7 +4,7 @@
 // markup a browser is actually sent -- and it is the same tree the browser adopts, which is what
 // `tests-dom/` measures from the other side.
 
-import { createElement, mount, html } from lath
+import { createElement, createStore, mount, html, Provider } from lath
 import { addressIs } from lath/router
 
 import { App } from "../app/pages.slx"
@@ -12,16 +12,22 @@ import { page, titleOf } from "../app/shell.sl"
 
 // The whole page, as the server renders it.
 //
-// **`addressIs` first, exactly as `api/render.sl` does it.** `Theme` stands above the router and
-// reads `?theme` with `useSearch`, so a page whose address was only known to `router()` would have
-// its colour decided by whichever expression happened to be evaluated first.
+// **`addressIs` first, exactly as `api/render.sl` does it.**
+//
+// **A FRESH `createStore()` PER CALL, exactly as `api/render.sl` does it too.** `mortar`'s theme atom
+// lives in `defaultStore()` where nothing else provides one, and that store is one module-level value
+// -- shared by every `shown()` call in this file's process. A test that seeded it dark and left it
+// there would leak into the next test's "no `theme` option" case, which is supposed to mean light.
 shown(url: string, data: object, options: object = {}) -> string =
     addressIs(url)
-    html(mount(App({ nav: { url: url, go: null, replace: null },
+    val root = App({ nav: { url: url, go: null, replace: null },
                      data: data,
                      user: options.user ?? null,
                      csrf: options.csrf ?? "tok",
-                     send: null })))
+                     theme: options.theme ?? null,
+                     send: null })
+
+    html(mount(createElement(Provider, { store: createStore() }, [root])))
 
 val Ada = { id: 1, name: "ada", role: "admin", avatar: null, made: 1756900000 }
 val Grace = { id: 2, name: "grace", role: "member", avatar: "avatars/2/face.svg", made: 1756900001 }
@@ -228,49 +234,36 @@ THE_HEADER_KNOWS_WHO_IS_ASKING()
     assert(contains(boss, "href=\"/admin\""))
 
 @test
-THE_THEME_IS_READ_OFF_THE_ADDRESS_AND_REACHES_EVERY_COMPONENT_ON_ONE_ATTRIBUTE()
+THE_THEME_COMES_FROM_A_COOKIE_AND_REACHES_EVERY_COMPONENT_ON_ONE_ATTRIBUTE()
     val light = shown("/", listing([]))
-    val dark = shown("/?theme=dark", listing([]))
+    val dark = shown("/", listing([]), { theme: "dark" })
 
     // **One attribute and not a class per element.** Every colour in `mortar` is a custom property
     // re-declared under `[data-theme="dark"]`, so a page turning over is this and nothing else.
     assert(contains(light, "class=\"mortar board\" data-theme=\"light\""))
     assert(contains(dark, "class=\"mortar board\" data-theme=\"dark\""))
 
-@test
-THE_THEME_CONTROL_IS_TWO_REAL_ANCHORS_AND_theme_light_IS_THE_ABSENCE_OF_THE_PARAMETER()
-    // **So a reader whose script never ran can still change the colour**, and the URL a person copies
-    // carries nothing that did not need to be there.
-    val markup = shown("/?theme=dark", listing([]))
-
-    assert(contains(markup, "<a class=\"m-seg\" href=\"/\">Light</a>"))
-    assert(contains(markup, "<a class=\"m-seg\" href=\"/?theme=dark\" aria-current=\"true\">Dark</a>"))
-
-@test
-CHANGING_THE_THEME_KEEPS_THE_FILTER_AND_THE_SORT_THE_READER_IS_ON()
-    // **This is a regression and not a nicety.** `mortar` 0.2.0's own `Theme` changed the theme with
-    // `write({ theme })`, and `lath`'s `useSearch` setter takes the WHOLE query -- so its toggle on
-    // `/?tag=slate&sort=busiest` wrote `/?theme=dark` and the filter and the sort were gone. **0.2.1
-    // keeps the query**, and this board's control is `mortar`'s setter and an `href` of its own; what
-    // is asserted here is the anchor, which is the half a reader with no script running follows.
-    val markup = shown("/?tag=slate&sort=busiest", listing([]) with { tag: "slate", sort: "busiest" })
-
-    assert(contains(markup, "href=\"/?tag=slate&amp;sort=busiest&amp;theme=dark\">Dark</a>"))
-
-    // And going back to light takes the parameter off and leaves the other two alone.
-    val dark = shown("/?tag=slate&sort=busiest&theme=dark",
-                     listing([]) with { tag: "slate", sort: "busiest" })
-
-    assert(contains(dark, "href=\"/?tag=slate&amp;sort=busiest\">Light</a>"))
+// **`shown()` -- and so `App` and `Theme` -- is handed an ALREADY NORMALISED word or `null`, never a
+// stray cookie value.** `Theme`'s `theme` prop faults on anything but `"light"` or `"dark"`, unlike
+// the atom it seeds, which `mortar`'s own `resolved()` normalises silently because a reader can reach
+// that in ways a prop cannot. It is `api/render.sl`'s `themeOf` that turns a stray cookie word into
+// `"light"` before it ever reaches here -- see
+// `A_COOKIE_HOLDING_NEITHER_WORD_IS_LIGHT_BECAUSE_A_COOKIE_IS_SOMETHING_ANYBODY_MAY_SET` in
+// `tests/routes.sl`, which drives the real HTTP path and pins exactly that.
 
 @test
-A_FILTER_A_SORT_AND_A_PAGE_NUMBER_ALL_KEEP_THE_THEME()
-    // The same merge read from the other side: nothing a reader chooses throws away the colour they
-    // are reading in.
-    val markup = shown("/?theme=dark", listing([]))
+THE_THEME_CONTROL_IS_ONE_BUTTON_NAMING_WHAT_A_CLICK_GOES_TO()
+    // **There is no address for this control to carry any more.** `mortar` writes the cookie itself
+    // through `useTheme()`'s own setter, so the board owns nothing but the label -- which names the
+    // colour a click goes TO, and not the one showing, so a reader is never told the state of the
+    // very button they are looking at.
+    val light = shown("/", listing([]))
+    val dark = shown("/", listing([]), { theme: "dark" })
 
-    assert(contains(markup, "href=\"/?theme=dark&amp;sort=busiest\""))
-    assert(contains(markup, "href=\"/?theme=dark&amp;tag=slate\""))
+    assert(contains(light, "aria-label=\"Theme\""))
+    assert(contains(light, "class=\"m-button quiet theme\""))
+    assert(contains(light, ">Dark</button>"))
+    assert(contains(dark, ">Light</button>"))
 
 @test
 EVERY_FORM_CARRIES_THE_TOKEN_AND_WHERE_TO_GO_BACK_TO()

@@ -12,8 +12,8 @@
 // the ingredients for.
 
 import { json } from sluice
-import { html, mount } from lath
-import { addressIs, parseSearch, searchOf, withSearch } from lath/router
+import { createElement, createStore, html, mount, Provider } from lath
+import { addressIs, withSearch } from lath/router
 
 import { App } from "../app/pages.slx"
 import { page, rendersOnServer, titleOf } from "../app/shell.sl"
@@ -34,20 +34,11 @@ export wantsJson(req: object) -> boolean
 
     contains(accept, "application/json") && !contains(accept, "text/html")
 
-// The query parameter that says which colours to render in.
-val Theme = "theme"
-
 // The address this request is at, as the page will hold it.
 //
 // **`format` is dropped**, being about the answer rather than about the page: the state a browser
 // hydrates against has to name the address a person is on, and `/?format=json` is not an address
 // anybody is on.
-//
-// **`theme` IS LEFT EXACTLY AS IT ARRIVED**, and it is `mortar` 0.2.1 that makes that safe: a
-// `?theme` that is neither word is the default there, quietly, because the address is whatever a
-// person typed or a link carried and a fault over a stranger's spelling would be a 500 nobody
-// reading the page could fix. An address the board rewrote would be a second answer to that
-// question, kept in step with `mortar`'s by hand.
 export addressOf(req: object) -> string
     var query = {}
 
@@ -61,23 +52,17 @@ export addressOf(req: object) -> string
     // one function apart in each direction rather than two spellings of a query string.
     withSearch(req.path, query)
 
-// `"light"` or `"dark"`, from the address.
+// `"light"` or `"dark"`, from the request's cookie.
 //
-// **THE THEME IS A QUERY PARAMETER AND NOT A COOKIE**, which is `mortar`'s arrangement and is the one
-// worth having: `?theme=dark` is something a person can bookmark and send to somebody else, the
-// server can read it off the request and render a dark page the first time, and a reader whose script
-// never ran can still change it by following a link. A cookie buys a URL with nothing in it and costs
-// a route, a `Set-Cookie` and a page that cannot be linked to in the colour it was read in.
+// **THE THEME IS A COOKIE AND NOT A QUERY PARAMETER**, which is `mortar` 0.3.2's arrangement: a
+// reader's choice belongs to them and not to the page they were on, so it is there again on the very
+// next request whichever page they land on. `mortar`'s `Theme` seeds its atom from this value and
+// writes the cookie back itself when a reader toggles it -- there is no `/theme` route here.
 //
-// **It is read off the ADDRESS THE PAGE WILL HOLD and not off the request**, which is what makes the
-// `data-theme` on `<html>` and the colour `mortar`'s `Theme` renders in one value rather than two
-// that agree by inspection: both read the same query string, this one with `lath/router`'s own
-// reader and `Theme` with the `useSearch` built on it.
-//
-// **Anything that is not `dark` is light**, a query string being something anybody may type -- which
+// **Anything that is not `dark` is light**, a cookie being something anybody may set by hand -- which
 // is `mortar`'s own rule for the same value, written here in the one place the document is decided.
-export themeOf(url: string) -> string =
-    if (parseSearch(searchOf(url))[Theme] ?? "") == "dark" then "dark" else "light"
+export themeOf(req: object) -> string =
+    if (req.cookies.theme ?? "") == "dark" then "dark" else "light"
 
 // Who is asking, or `null`. **`null` is a page's ordinary case and never a failure** -- a board is
 // something to read before it is something to join.
@@ -95,28 +80,37 @@ export answered(req: object, data: object, status: integer = 200) -> object
                   data: data,
                   user: whoIs(req),
                   csrf: req.csrf ?? "",
-                  theme: themeOf(at) }
+                  theme: themeOf(req) }
 
     if wantsJson(req) then return json(state, status)
 
-    // **`lath/router` is told where the page is before anything renders.** `router()` does it too,
-    // but `Theme` stands ABOVE the router in the tree and reads `?theme` with `useSearch` -- so a
-    // page whose theme was decided by whichever expression happened to be evaluated first would be a
-    // page that worked by accident.
+    // **`lath/router` is told where the page is before anything renders.**
     addressIs(state.url)
 
     // **A page the browser builds is sent as an empty container**, which is what `rendersOnServer`
     // decides and `client.slx` reads again on the other side. The state still travels, so the page
     // it mounts knows who is signed in, what the token is and what went wrong with the last post --
     // everything the markup would have carried, minus the markup.
+    //
+    // **`createStore()` plus `Provider` gives this request its own atom**, so two requests rendered
+    // by one process never see each other's theme -- `mortar`'s README says this is load-bearing and
+    // not a nicety. `Theme`'s `theme` prop, below in `App`, seeds that store's atom from `state.theme`
+    // for this render alone.
+    //
+    // **`Provider` is found by walking up the render tree from whatever calls `useStore()`, comparing
+    // element types** -- so, unlike `App`, it has to be a real element in that tree and not a plain
+    // function call: `createElement` is what makes one.
     val markup = if !rendersOnServer(data)
         ""
     else
-        html(mount(App({ nav: { url: state.url, go: null, replace: null },
+        val root = App({ nav: { url: state.url, go: null, replace: null },
                          data: data,
                          user: state.user,
                          csrf: state.csrf,
-                         send: null })))
+                         theme: state.theme,
+                         send: null })
+
+        html(mount(createElement(Provider, { store: createStore() }, [root])))
 
     { status: status,
       headers: { "Content-Type": "text/html; charset=utf-8" },

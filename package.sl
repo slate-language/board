@@ -22,12 +22,15 @@
         // control in the header that asks for the query took both of those over as a side effect of
         // asking -- so a click moved the address bar and re-rendered one control while the page sat
         // there, and the back button did nothing at all.
-        lath: { git: "github.com/slate-language/lath", version: "0.5.3" },
-        // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.2.1 is what took
-        // two workarounds out of this board**: its `Theme`'s setter keeps the rest of the query, so
-        // a theme toggle no longer throws away a filter and a sort, and a `?theme` it does not know
-        // is the default rather than a fault, so the server has nothing to normalise.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.2.1" },
+        // **0.6.0 IS WHAT `mortar` 0.3.2 NEEDS**: the theme now lives in an atom rather than the
+        // address bar, and `atom`, `useAtom`, `createStore` and `Provider` are 0.6.0's.
+        lath: { git: "github.com/slate-language/lath", version: "0.6.0" },
+        // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.3.2 MOVED THE
+        // THEME FROM THE ADDRESS TO A COOKIE**: it lives in a lath atom now, seeded once per request
+        // from `req.cookies.theme` and written back by `Theme` itself through `slate:dom`'s
+        // `setCookie` (0.0.34) whenever a reader toggles it -- no `?theme` query and no `/theme`
+        // route needed for the ordinary case.
+        mortar: { git: "github.com/slate-language/mortar", version: "0.3.2" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.3.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this

@@ -318,10 +318,11 @@ signedOut(req: object)
 
     moved(req, null)
 
-// **THERE IS NO `/theme` ROUTE, AND THAT IS THE POINT OF PUTTING THE THEME IN THE ADDRESS.** It was a
-// `POST` writing a cookie until the board moved to `mortar`'s arrangement; now `?theme=dark` is read
-// off the request by `api/render.sl` and changed by following a link, so there is nothing to post,
-// nothing to set and nothing a reader with no script running cannot do.
+// **THERE IS STILL NO `/theme` ROUTE.** The theme is a cookie again as of `mortar` 0.3.2, but this
+// board writes none of it: `parts/theme.slx`'s `Theme` reads `req.cookies.theme` through
+// `api/render.sl`'s `themeOf` to seed the atom, and writes the cookie back itself through
+// `slate:dom`'s `setCookie` whenever a reader toggles it with `useTheme()`. There is nothing here to
+// post and nothing to set.
 
 // -- posting -------------------------------------------------------------------------------------
 
