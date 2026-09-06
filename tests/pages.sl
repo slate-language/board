@@ -118,6 +118,9 @@ THE_PAGER_COUNTS_PAGES_AND_STOPS_AT_BOTH_ENDS()
 
     assert(contains(markup, "page 1 of 3"))
     assert(contains(markup, "45 threads"))
+    // **`mortar` 0.4.3 stopped rendering a step with nowhere to go at all** -- not inert text, an
+    // invisible placeholder that holds the layout slot so the page count stays centred.
+    //
     // **Not a bare `contains(markup, "previous")`**: the pager's own stylesheet ships to the browser
     // comments and all, and its header comment says the word "previous" -- so the check has to name
     // the rendered text node, not the word.
@@ -256,18 +259,21 @@ THE_THEME_COMES_FROM_A_COOKIE_AND_REACHES_EVERY_COMPONENT_ON_ONE_ATTRIBUTE()
 // `tests/routes.sl`, which drives the real HTTP path and pins exactly that.
 
 @test
-THE_THEME_CONTROL_IS_ONE_BUTTON_NAMING_WHAT_A_CLICK_GOES_TO()
-    // **There is no address for this control to carry any more.** `mortar` writes the cookie itself
-    // through `useTheme()`'s own setter, so the board owns nothing but the label -- which names the
-    // colour a click goes TO, and not the one showing, so a reader is never told the state of the
-    // very button they are looking at.
+THE_THEME_CONTROL_IS_TWO_SEGMENTS_SHOWING_BOTH_WORDS_AT_ONCE()
+    // **There is no address for this control to carry any more**, so it is a `Segmented` with an
+    // `onChoose` and no `href` -- `mortar` writes the cookie itself through `useTheme()`'s own
+    // setter. The group carries `aria-label="Theme"`, each segment is a button named "Light" or
+    // "Dark", and the one showing is the one marked `aria-current`, unlike the single button this
+    // used to be, which named the colour a click went TO and never the one in force.
     val light = shown("/", listing([]))
     val dark = shown("/", listing([]), { theme: "dark" })
 
     assert(contains(light, "aria-label=\"Theme\""))
-    assert(contains(light, "class=\"m-button quiet theme\""))
-    assert(contains(light, ">Dark</button>"))
-    assert(contains(dark, ">Light</button>"))
+    assert(contains(light, "class=\"m-segmented theme\""))
+    assert(contains(light, "aria-current=\"true\">Light</button>"))
+    assert(contains(light, "class=\"m-seg\">Dark</button>"))
+    assert(contains(dark, "aria-current=\"true\">Dark</button>"))
+    assert(contains(dark, "class=\"m-seg\">Light</button>"))
 
 @test
 EVERY_FORM_CARRIES_THE_TOKEN_AND_WHERE_TO_GO_BACK_TO()
