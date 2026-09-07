@@ -198,7 +198,10 @@ async driving(name: string, workers: integer, body) -> boolean
 // **`PORT` is `0`**, so the kernel picks and the supervisor -- which holds the only listening socket
 // -- tells every worker which port that was. Nothing here may name a port, two of these running at
 // once being ordinary.
-async started(name: string, workers: integer) -> object
+// **`object | null` and not `object`**, a spawn that failed being answered as nothing here: slate
+// 0.0.41 checks a `return` against the annotation, so the narrower one would fault with a sentence
+// about the result type in place of the one about the spawn.
+async started(name: string, workers: integer) -> object | null
     val where = ".cluster-" + name
 
     await swept(where)

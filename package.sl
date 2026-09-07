@@ -24,7 +24,12 @@
         // there, and the back button did nothing at all.
         // **0.6.0 IS WHAT `mortar` 0.3.2 NEEDS**: the theme now lives in an atom rather than the
         // address bar, and `atom`, `useAtom`, `createStore` and `Provider` are 0.6.0's.
-        lath: { git: "github.com/slate-language/lath", version: "0.8.0" },
+        // **0.10.1 IS THE FLOOR AND IT IS WHAT KEEPS A WORKER ALIVE**: `matchPath` answers `null` for
+        // a template that did not match and was declared `-> object`, which every slate before 0.0.41
+        // let through and 0.0.41 checks -- so on the deployed board every address that was not the
+        // first route in the table faulted, answered `500`, and put the fault back on the loop, which
+        // is a worker gone. 0.10.1 says `-> object | null`, which is what the function always did.
+        lath: { git: "github.com/slate-language/lath", version: "0.10.2" },
         // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.3.2 MOVED THE
         // THEME FROM THE ADDRESS TO A COOKIE**: it lives in a lath atom now, seeded once per request
         // from `req.cookies.theme` and written back by `Theme` itself through `dom`'s
