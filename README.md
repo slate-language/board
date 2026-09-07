@@ -54,7 +54,7 @@ slate fetch
 ```
 
 `slate fetch` downloads the six packages in `package.sl` and records their hashes in `slate.sum`.
-`slate add <pkg>` is what puts a new one in the manifest; `slate deps` says whether anything in the
+`slate install <pkg>` is what puts a new one in the manifest; `slate deps` says whether anything in the
 graph is unrecorded.
 
 A cluster of its own, if you would rather not touch a real one:
