@@ -100,9 +100,37 @@ makes the change real.
 | `PORT` | `0` asks the kernel for one, which is what the default does; the server says which |
 | `BOARD_SECRET` | the key a session cookie is signed with. **Set it**: a generated one signs everybody out on every restart, and the server says so on `stderr` |
 | `BOARD_BEHIND_PROXY` | `1` where something in front of this server writes `x-forwarded-for`. Off by default, and *Behind Caddy* below is what it promises |
+| `BOARD_WORKERS` | how many processes `cluster.sl` runs; one per core where unset |
 
 Stop it with `SIGTERM`: new requests are refused, what is in hand finishes, and only then is the
 socket let go. `pg_ctl -D /tmp/board-db stop` puts the cluster away.
+
+### On every core
+
+`server.sl` is one process, and one slate program is one event loop on one thread — so a board on an
+eight-core machine is using an eighth of it. `cluster.sl` is the same board under a supervisor, and
+it is what a deployment runs:
+
+```
+PORT=8080 BOARD_SECRET=a-long-random-string BOARD_WORKERS=4 slate cluster.sl
+```
+
+The supervisor runs this program again once per core, holds the only listening socket, and hands each
+connection it accepts to the next worker; a worker that dies is started again, `SIGTERM` and `SIGINT`
+drain every worker and exit, and `SIGHUP` replaces the workers one at a time with the replacement
+serving before the one it replaces is asked to leave. Nothing in `api/` or `app/` knows about any of
+it: `wiring.sl` is what the two entry points share, and the whole of the difference is which of them
+opens the socket.
+
+Two things are true of four processes that are not true of one, and both are in `wiring.sl`:
+
+- **`BOARD_SECRET` is required rather than warned about.** Each worker would otherwise make up a key
+  of its own, and a cookie signed by the worker that answered a sign-in is a forgery to the other
+  three — so `cluster.sl` refuses to start without one.
+- **A reply reaches the readers attached to the other workers**, over the supervisor: it is already
+  talking to every worker, so the board's event hub publishes upstream as well as to its own
+  subscribers and needs no Redis to do it. What does not survive is the *replay* a reconnecting
+  reader asks for, an event id meaning something only to the worker that made it.
 
 ## A request's journey
 
@@ -114,15 +142,17 @@ It opens the database, builds the store, hands both to `application()` and serve
 SQL and no markup is in this file.
 
 ```slate
-val store = opened.value
-val sessions = sessionStore({})
-val app = application(store, sessions, { secret: secret(), sink: said, trustProxy: behindProxy() })
-
+val store = got.value
+val made = assembled(store)
 val port = portOf(env("PORT") ?? "0")
-val server = serve(port, app)
+val server = serve(port, made.app)
 
-onShutdown(() -> stopping(app, server, store))
+onShutdown(() -> stopping(made.app, server, store, made.feed))
 ```
+
+**`assembled`, `opened` and `stopping` are `wiring.sl`'s**, which is what this file and `cluster.sl`
+share: the same board, the same session store, the same drain, and a different thing opening the
+socket. The board itself is `application(store, sessions, options)` and knows about neither.
 
 **`store` is a plain object of functions**, each answering `{ ok: true, value }` or
 `{ ok: false, error, code }`. `api/postgres.sl` is one implementation over `pg`;
@@ -571,24 +601,35 @@ in the same second unaffected.
 slate test tests
 slate test --js tests
 NODE_OPTIONS="--import ./tests-dom/setup.mjs" slate test --js tests-dom
+slate test tests-cluster
 ```
 
-Three commands and all three have to be green. The third needs `npm install` once and prints a wall
+All four have to be green. The third needs `npm install` once and prints a wall
 of `Could not parse CSS stylesheet` from jsdom's CSS parser, which does not read the native nesting
-every `mortar` sheet is written in — noise, not a failure.
+every `mortar` sheet is written in — noise, not a failure. The fourth needs a slate with
+`slate:cluster` and `slate:process`'s `spawn` in it.
 
 | | |
 |---|---|
 | `slate test tests` | every route, page, statement and upload, under the interpreter |
 | `slate test --js tests` | the same suite compiled to JavaScript and run under node |
 | the jsdom one | the real pages adopted by a real document — hydration, events, mutations |
+| `slate test tests-cluster` | the board under a supervisor: three processes, a real socket, two signals |
 
 **The first two are the same suite on two hosts and need no database, no socket and nothing to
 start.** `tests/store.sl` is a second implementation of the store over ordinary arrays, and
 `tests/pgserver.sl` is a PostgreSQL server written in slate — so the SQL is checked against the wire
 rather than against whichever server happens to be installed.
 
-**jsdom is what the first two cannot reach.** They render to a string, which says what the markup
+**A supervisor is what none of the other three can reach.** `tests-cluster/` starts `cluster.sl`'s own
+worker as a child process and asks it over a real socket: whether more than one worker answers, whether
+a worker killed with `SIGKILL` is replaced while the board keeps answering, whether what one worker
+publishes the others hear, whether `SIGTERM` finishes the request in hand and leaves no process behind,
+and whether `SIGHUP` replaces every worker without refusing a connection. It is a suite of its own for
+the reason the jsdom one is: its files name modules an older slate does not have, and an import is not
+something a test can ask by trying.
+
+**jsdom is what the string-rendered suites cannot reach.** They render to a string, which says what the markup
 says and nothing about what a browser makes of it: whether the page can be *adopted* at all, whether
 hydration writes anything it did not have to, whether a form the framework attached really submits
 without a reload. `tests-dom/` measures that with jsdom's own `MutationObserver` — the browser's
