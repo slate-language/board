@@ -1,25 +1,25 @@
-// What a test can ask a real document that `slate:dom` has no name for.
+// What a test can ask a real document that `dom` has no name for.
 //
 // **This file and `setup.mjs` beside it are `lath`'s own**, taken as a shape rather than as a
 // dependency -- a package does not publish its tests, and a suite that imported another one's would
 // be pinned to a file that package is free to change. The container is `#app`, which is what this
 // board's shell renders into.
 //
-// **Three things a slate program cannot do, reached through names it can.** `slate:dom` is
-// twenty-eight names and none of them dispatches an event, observes a mutation, or counts what the
+// **Three things a slate program cannot do, reached through names it can.** `dom` is
+// forty-four names and none of them dispatches an event, observes a mutation, or counts what the
 // browser was left to do itself -- and a slate program cannot reach a JavaScript global, a builtin
 // being a parameter of the emitted program rather than a name taken off `globalThis`. So the harness
-// in `setup.mjs` puts each of the three where an ordinary `slate:dom` call finds it: a property
+// in `setup.mjs` puts each of the three where an ordinary `dom` call finds it: a property
 // whose setter dispatches, and a `<meta>` in the head carrying the counts.
 //
 // **Nothing here fakes anything.** jsdom builds the event, jsdom dispatches it, jsdom's own
 // `MutationObserver` counts what changed. This file is the wire, not the answer.
 
-import { byId, query, markup, nodeText, attribute, setProperty } from slate:dom
+import { byId, query, markup, nodeText, attribute, setProperty } from dom
 
 // The page emptied, with whatever a server would have sent already inside the container.
 //
-// **`innerHTML` is how markup gets onto a page, and there is no other way from here.** `slate:dom`
+// **`innerHTML` is how markup gets onto a page, and there is no other way from here.** `dom`
 // deliberately has no reader for it and no writer either; `setProperty` is a property assignment on
 // a real element, which is what this is. It is what makes a hydration test possible at all: the
 // markup has to be PARSED by the browser, and a tree built out of `createElement` is not the same

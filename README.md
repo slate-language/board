@@ -18,6 +18,7 @@ rather than a part of any of them:
 | [mortar](https://github.com/slate-language/mortar) | what a page is made of, each component carrying its own stylesheet |
 | [pg](https://github.com/slate-language/pg) | PostgreSQL, spoken on the same loop that answers HTTP |
 | [logger](https://github.com/slate-language/logger) | where a request's log line goes |
+| [dom](https://github.com/slate-language/dom) | the browser: an element, an event, a mutation observer, the address bar |
 
 **One language across both halves is the point.** A page component is a plain function of its
 contexts, so the server renders it to a string and the browser adopts that same markup and carries
@@ -43,7 +44,7 @@ written around. The list of what that turned up is at the end.
 
 ## Run it
 
-You need PostgreSQL and **slate 0.0.35 or later**.
+You need PostgreSQL and **slate 0.0.40 or later**.
 
 ```
 brew install slate-language/tap/slate
@@ -52,7 +53,7 @@ cd board
 slate fetch
 ```
 
-`slate fetch` downloads the five packages in `package.sl` and records their hashes in `slate.sum`.
+`slate fetch` downloads the six packages in `package.sl` and records their hashes in `slate.sum`.
 `slate add <pkg>` is what puts a new one in the manifest; `slate deps` says whether anything in the
 graph is unrecorded.
 
@@ -281,9 +282,9 @@ streamed(feed: object, req: object)
 anything live. `curl -N http://127.0.0.1:8080/threads/1/events` reads it.
 
 **The browser polls instead, and that is the one thing here that is standing in for something
-better.** `slate:dom` has no `EventSource`, and slate's `fetch` answers a whole body rather than a
+better.** `dom` has no `EventSource`, and slate's `fetch` answers a whole body rather than a
 stream, so a slate program in a page has no way to consume server-sent events. One name on
-`slate:dom` closes it.
+`dom` closes it.
 
 ## The pages, and what they are made of
 
@@ -649,7 +650,7 @@ Four are still open, and each is a bullet rather than a workaround:
 - **`slate:image` is not on the JavaScript back end.** So a display copy is something this board makes
   under the interpreter and simply does not make under node — which is why `?display` falls back to
   the original rather than answering a 404, and why four tests skip there.
-- **`slate:dom` has no `EventSource`**, so the browser polls a thread while the server publishes a
+- **`dom` has no `EventSource`**, so the browser polls a thread while the server publishes a
   perfectly good stream that `curl` reads.
 - **`imageShape` refuses a header of more than 2^28 pixels and says `unknown image type`**, where the
   documented example is a PNG claiming 20,000 square. It costs this board nothing — such a file is

@@ -36,7 +36,7 @@ import { createElement, createStore, Fragment, mount, hydrate, html, Provider, s
     useEffect, useState } from lath
 import { domHost } from lath/dom
 import { navigateWith } from lath/router
-import { cookie, pushPath, query } from slate:dom
+import { cookie, pushPath, query } from dom
 
 import { App } from "../app/pages.slx"
 import { rendersOnServer } from "../app/shell.sl"

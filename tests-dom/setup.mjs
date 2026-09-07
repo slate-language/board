@@ -17,10 +17,10 @@
 //
 // ## The three things a slate test cannot do, and how they are handed to it
 //
-// **`slate:dom` is twenty-eight names, and none of them dispatches an event, observes a mutation or
+// **`dom` is forty-four names, and none of them dispatches an event, observes a mutation or
 // counts what the browser refused to do.** A slate program has no way to reach a JavaScript global
 // -- a builtin is a parameter of the emitted program, not a name taken off `globalThis` -- so those
-// three have to arrive through names `slate:dom` already has. They do:
+// three have to arrive through names `dom` already has. They do:
 //
 // - **`setProperty(node, "lathEvent", spec)` dispatches a real event on that node.** A property
 //   assignment on an element is exactly what `setProperty` is, and the setter installed below is an
@@ -35,7 +35,7 @@
 //   the count of those IS the count of links the router declined -- which is what says the refusals
 //   were refusals and not a broken link.
 //
-// **Two names on `slate:dom` would replace all of it** -- a `dispatch(node, type, init)` and an
+// **Two names on `dom` would replace all of it** -- a `dispatch(node, type, init)` and an
 // `observe(node, fn)` -- and until they exist this is the seam. It does not fake anything: every
 // answer above is jsdom's own.
 
@@ -165,9 +165,15 @@ Object.defineProperty(w.Element.prototype, "lathEvent", {
     }
 })
 
-// The names slate's runtime looks for, and the classes a page has. **`addEventListener` has to be
-// the WINDOW's**: node's global is an `EventTarget` of its own, so leaving it alone would register
-// `popstate` on something the page never raises one on.
+// The names the `dom` package reads off `globalThis`, and the classes a page has.
+// **`addEventListener` has to be the WINDOW's**: node's global is an `EventTarget` of its own, so
+// leaving it alone would register `popstate` on something the page never raises one on.
+//
+// **`AbortController` is installed from the WINDOW too, and for the same kind of reason.** It is how
+// `off` takes a listener back -- `addEventListener(kind, f, { signal })` and `abort()` -- and a
+// signal built in node's realm handed to an element in jsdom's is a foreign object to the interface
+// that checks it: *parameter 3 dictionary has member 'signal' that is not of type 'AbortSignal'*.
+// A page has one realm and never meets this; a harness has two.
 const install = (name, value) => {
     try {
         Object.defineProperty(globalThis, name,
@@ -189,6 +195,8 @@ install("MutationObserver", w.MutationObserver)
 install("MouseEvent", w.MouseEvent)
 install("KeyboardEvent", w.KeyboardEvent)
 install("Event", w.Event)
+install("AbortController", w.AbortController)
+install("AbortSignal", w.AbortSignal)
 install("addEventListener", w.addEventListener.bind(w))
 install("removeEventListener", w.removeEventListener.bind(w))
 install("dispatchEvent", w.dispatchEvent.bind(w))

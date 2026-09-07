@@ -16,7 +16,7 @@
 
 import { createElement, Fragment, mount, hydrate, html, stringHost } from lath
 import { domHost } from lath/dom
-import { attribute, byId, query, setProperty } from slate:dom
+import { attribute, byId, query, setProperty } from dom
 
 // The page emptied, with markup already inside the container -- which the browser PARSES, and that
 // is the whole point: a tree built out of `createElement` is not the page a server sent.

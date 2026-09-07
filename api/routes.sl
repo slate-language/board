@@ -321,7 +321,7 @@ signedOut(req: object)
 // **THERE IS STILL NO `/theme` ROUTE.** The theme is a cookie again as of `mortar` 0.3.2, but this
 // board writes none of it: `parts/theme.slx`'s `Theme` reads `req.cookies.theme` through
 // `api/render.sl`'s `themeOf` to seed the atom, and writes the cookie back itself through
-// `slate:dom`'s `setCookie` whenever a reader toggles it with `useTheme()`. There is nothing here to
+// `dom`'s `setCookie` whenever a reader toggles it with `useTheme()`. There is nothing here to
 // post and nothing to set.
 
 // -- posting -------------------------------------------------------------------------------------

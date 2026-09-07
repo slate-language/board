@@ -24,7 +24,7 @@ import { createElement, Fragment, hydrate, mount, useEffect, useRef, useState } 
 import { domHost } from lath/dom
 import { navigateWith } from lath/router
 import { attribute, byId, nodeText, onNavigate, pushPath, query, replacePath,
-    setAttribute } from slate:dom
+    setAttribute } from dom
 import { useTheme } from mortar
 
 import { App } from "./app/pages.slx"
@@ -37,9 +37,9 @@ val AsJson = "format=json"
 //
 // **This is a POLL and it should be the event stream the server is already publishing.** `sluice`'s
 // hub is live at `/threads/:id/events` and `curl` reads it; what is missing is a *reader* -- a browser
-// has `EventSource` and `slate:dom` does not bind it, and slate's `fetch` answers a whole body rather
+// has `EventSource` and `dom` does not bind it, and slate's `fetch` answers a whole body rather
 // than a stream, so there is no way for a slate program in a page to consume server-sent events at
-// all. One name on `slate:dom` closes this; the poll is what stands in until it exists.
+// all. One name on `dom` closes this; the poll is what stands in until it exists.
 val Beat = 3000
 
 // -- the program -------------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ Root(props: object) =
         setUrl(where)
 
     // **Installed once and not on every render**, which is what the empty dependency list says: a
-    // second `onNavigate` would be a second handler for one movement, and `slate:dom` keeps one per
+    // second `onNavigate` would be a second handler for one movement, and `dom` keeps one per
     // registration.
     wire()
         navigateWith(go)

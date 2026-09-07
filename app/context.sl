@@ -28,7 +28,7 @@ export val Board = createContext({ page: "missing", at: "/" })
 //
 // **This is the seam that keeps every page component host-free.** `lath/router` is handed a path and
 // never reads one; this carries the path and the two functions that write it, so a page may move the
-// address without importing `slate:dom`. On the server both functions do nothing -- there is no
+// address without importing `dom`. On the server both functions do nothing -- there is no
 // address bar to write -- and `client.slx` fills them in.
 //
 //     go(url)       a new entry in the history: following a link
