@@ -11,7 +11,7 @@
         // its `multipart` reads `req.bytes`, where 0.3.0's read the body as text and a `.png` was
         // the same value as no body at all. 0.4.1 moved the media type in a refused upload's `415`
         // out of the problem document's own `type` member and into `mediaType`.
-        sluice: { git: "github.com/slate-language/sluice", version: "0.5.1" },
+        sluice: { git: "github.com/slate-language/sluice", version: "0.6.0" },
         // The UI framework, rendered twice -- to markup on the server and into the page in a
         // browser. `lath/router` is imported by both halves and `lath/dom` only by the browser one.
         // **0.5.1 is what makes this board hydratable**: adjacent text children keep their seam, an
@@ -29,15 +29,15 @@
         // let through and 0.0.41 checks -- so on the deployed board every address that was not the
         // first route in the table faulted, answered `500`, and put the fault back on the loop, which
         // is a worker gone. 0.10.1 says `-> object | null`, which is what the function always did.
-        lath: { git: "github.com/slate-language/lath", version: "0.10.2" },
+        lath: { git: "github.com/slate-language/lath", version: "0.10.3" },
         // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.3.2 MOVED THE
         // THEME FROM THE ADDRESS TO A COOKIE**: it lives in a lath atom now, seeded once per request
         // from `req.cookies.theme` and written back by `Theme` itself through `dom`'s
         // `setCookie` (0.0.34) whenever a reader toggles it -- no `?theme` query and no `/theme`
         // route needed for the ordinary case.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.6.0" },
+        mortar: { git: "github.com/slate-language/mortar", version: "0.9.1" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
-        pg: { git: "github.com/slate-language/pg", version: "0.6.0" },
+        pg: { git: "github.com/slate-language/pg", version: "0.7.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
         // package takes one, so there is nothing between them.
         logger: { git: "github.com/slate-language/logger", version: "0.2.0" },
