@@ -81,13 +81,17 @@ export pick(req: object, field: string)
 // -- what it is -----------------------------------------------------------------------------------
 
 // `{ type, extension }` for a picture this board will serve, or `null` for anything else.
-export kindOf(bytes: array)
+// **A BUFFER IS WHAT REALLY ARRIVES HERE, AND IT IS NOT AN ARRAY.** `bytes` is a kind of its own in
+// slate: `toBytes`, `readBytes` and a multipart file's `bytes` all answer one, where a picture
+// assembled in a test is an array of small numbers. Both index and measure alike, so every function
+// below reads either; an annotation naming only `array` compiles and then refuses the upload.
+export kindOf(bytes: array | bytes)
     for kind in Kinds
         if begins(bytes, kind.mark, kind.at) then return { type: kind.type, extension: kind.extension }
 
     null
 
-begins(bytes: array, mark: array, at: integer) -> boolean
+begins(bytes: array | bytes, mark: array, at: integer) -> boolean
     if bytes.length < at + mark.length then return false
 
     var i = 0
@@ -171,7 +175,7 @@ async taken(file: object, square: boolean) -> object
 // **AND A HOST WITH NO IMAGE LIBRARY ALSO KEEPS THE ORIGINAL AND NOTHING ELSE**, which is not a
 // concession: `slate:image` is a server module, the board runs under the interpreter, and the page
 // asks for the display copy in a way that falls back to the original wherever there is none.
-shown(bytes: array, kind: object, square: boolean) -> object
+shown(bytes: array | bytes, kind: object, square: boolean) -> object
     if kind.extension == "gif" || !imagesHere() then return { ok: true, value: null }
 
     val shape = imageShape(bytes)
@@ -224,8 +228,12 @@ squared(img: object, side: integer) -> object
     if short == side then box else resizeImage(box, side, side)
 
 // A square of `side` pixels out of `img`, with its top left corner at `x, y`.
+// **THE ROWS ARE COLLECTED IN A BUFFER, BECAUSE A DECODED PICTURE'S `pixels` IS ONE.** `bytes` is a
+// kind of its own in slate and `concat` joins the kind its FIRST argument is, so an accumulator
+// started as `[]` refuses the very first row it is given -- and what this hands back has to be what
+// `resizeImage` and the encoders take, which is the same buffer `readImage` would have made.
 cut(img: object, x: integer, y: integer, side: integer) -> object
-    var out = []
+    var out = bytes([])
     var row = y
 
     while row < y + side
@@ -241,7 +249,7 @@ cut(img: object, x: integer, y: integer, side: integer) -> object
 //
 // **A file already there is the same file**, the name being the digest of what is in it -- so this is
 // not a race to lose and the second writer has nothing to say.
-async written(name: string, bytes: array) -> object
+async written(name: string, bytes: array | bytes) -> object
     if await exists(Root + "/" + name) then return { ok: true }
 
     val put = await writeBytes(Root + "/" + name, bytes)
@@ -251,7 +259,7 @@ async written(name: string, bytes: array) -> object
     { ok: true }
 
 // The name a picture has: what it is, and then what kind of thing it is.
-export nameOf(bytes: array, extension: string) -> string =
+export nameOf(bytes: array | bytes, extension: string) -> string =
     base64urlEncode(sha256(bytes)) + "." + extension
 
 // Where the display copy of a stored picture is remembered.

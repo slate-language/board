@@ -48,7 +48,9 @@ THE_FOUR_FORMATS_A_BROWSER_SHOWS_ARE_READ_OFF_THEIR_FIRST_BYTES()
     assertEq(kindOf(toBytes("GIF89a") ).type, "image/gif")
 
     // **A WebP says what it is after its own size**, a RIFF container naming its kind at byte eight.
-    assertEq(kindOf(concat(toBytes("RIFF"), concat([36, 0, 0, 0], toBytes("WEBP")))).type, "image/webp")
+    // `concat` joins the kind its FIRST argument is, so the size is a buffer and not four numbers.
+    assertEq(kindOf(concat(toBytes("RIFF"), concat(bytes([36, 0, 0, 0]), toBytes("WEBP")))).type,
+             "image/webp")
 
 @test
 ANYTHING_ELSE_IS_NOT_A_PICTURE_HOWEVER_IT_IS_LABELLED()

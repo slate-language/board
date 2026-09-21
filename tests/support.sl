@@ -146,8 +146,11 @@ export val Edge = "----boardtest7f3a"
 //
 // **The CRLF before a delimiter belongs to the delimiter and not to the part**, which is the
 // off-by-one every multipart writer and reader has to agree about.
-export multipart(fields: object, file) -> array
-    var out = []
+// **THE ACCUMULATOR IS A BUFFER, WHICH IS WHAT A SERVER REALLY PUTS ON A REQUEST.** `toBytes`
+// answers `bytes` -- a kind of its own, not an array -- and `concat` joins the kind its FIRST
+// argument is, so a body started as `[]` refuses the first header it is given.
+export multipart(fields: object, file) -> bytes
+    var out = bytes([])
 
     for [name, value] in entries(fields)
         val head = "--" + Edge + "\r\nContent-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
@@ -168,10 +171,15 @@ export multipart(fields: object, file) -> array
 // A real PNG, and the smallest one there is: eight bytes that say what it is, a header, one
 // transparent pixel and the end. **A fixture that is really a PNG is the point** -- what a photo is
 // is read off these bytes and never off the `Content-Type` a client wrote.
-export val Png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0,
-                  1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 218, 99, 252,
-                  207, 192, 80, 15, 0, 4, 133, 1, 128, 132, 169, 140, 33, 0, 0, 0, 0, 73, 69, 78, 68,
-                  174, 66, 96, 130]
+//
+// **AND EVERY PICTURE IN THIS FILE IS A BUFFER, BECAUSE THAT IS WHAT A PHOTOGRAPH REALLY IS.**
+// `bytes` is a kind of its own in slate: a multipart file's `bytes`, `readBytes` and `toBytes` all
+// answer one, so a fixture written as an array of numbers is a value no upload can produce -- and a
+// picture read back off the disk would then never equal the one that was sent.
+export val Png = bytes([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0,
+                        0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120,
+                        218, 99, 252, 207, 192, 80, 15, 0, 4, 133, 1, 128, 132, 169, 140, 33, 0, 0,
+                        0, 0, 73, 69, 78, 68, 174, 66, 96, 130])
 
 // What that PNG is called once it is kept: the base64url of its own SHA-256, and then what it is.
 export val PngName = "xBTNDiBN6XT3N1PH4o12OOezaRu4saK6trJbt_7Xznc.png"
@@ -187,13 +195,13 @@ export program(name: string) -> object =
 // here as bytes rather than as a call to `encodeWebP`** because what it is for is proving that a
 // WebP is a picture this board takes at all, and that answer must be the same on a host that cannot
 // encode one.
-export val Webp = [82, 73, 70, 70, 104, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 32, 92, 0, 0, 0, 208,
-                   1, 0, 157, 1, 42, 8, 0, 8, 0, 1, 64, 38, 37, 176, 2, 116, 1, 14, 103, 210, 197,
-                   160, 0, 254, 245, 242, 157, 204, 182, 77, 6, 46, 143, 255, 128, 157, 165, 202,
-                   197, 115, 208, 128, 128, 154, 44, 136, 15, 117, 210, 3, 252, 37, 41, 222, 255,
-                   99, 102, 197, 126, 207, 175, 246, 55, 255, 151, 240, 241, 237, 255, 54, 182, 60,
-                   191, 227, 254, 81, 53, 114, 191, 209, 38, 63, 240, 67, 255, 226, 15, 209, 128,
-                   0, 0]
+export val Webp = bytes([82, 73, 70, 70, 104, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 32, 92, 0, 0, 0,
+                         208, 1, 0, 157, 1, 42, 8, 0, 8, 0, 1, 64, 38, 37, 176, 2, 116, 1, 14, 103,
+                         210, 197, 160, 0, 254, 245, 242, 157, 204, 182, 77, 6, 46, 143, 255, 128,
+                         157, 165, 202, 197, 115, 208, 128, 128, 154, 44, 136, 15, 117, 210, 3, 252,
+                         37, 41, 222, 255, 99, 102, 197, 126, 207, 175, 246, 55, 255, 151, 240, 241,
+                         237, 255, 54, 182, 60, 191, 227, 254, 81, 53, 114, 191, 209, 38, 63, 240,
+                         67, 255, 226, 15, 209, 128, 0, 0])
 
 export val WebpName = "j8lD578diPLdc81pHzCJaGtpssOvV7uD4Rb0CrhnKT8.webp"
 
@@ -203,8 +211,8 @@ export webp(name: string) -> object =
 // A real GIF, one white pixel of it. **What a GIF is for here is the format that keeps its original
 // and nothing else**, `readImage` answering the first frame of one and a still of an animation being
 // a picture nobody posted.
-export val Gif = [71, 73, 70, 56, 57, 97, 1, 0, 1, 0, 128, 0, 0, 0, 0, 0, 255, 255, 255, 33, 249, 4,
-                  1, 0, 0, 0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 1, 68, 0, 59]
+export val Gif = bytes([71, 73, 70, 56, 57, 97, 1, 0, 1, 0, 128, 0, 0, 0, 0, 0, 255, 255, 255, 33,
+                        249, 4, 1, 0, 0, 0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 1, 68, 0, 59])
 
 export val GifName = "7xlVrnV8i5ZsgySDUDMb06MPZYztEfOH-OvwWrM2hik.gif"
 
@@ -215,9 +223,9 @@ export gif(name: string) -> object =
 // `IHDR` claiming 12,000 by 12,000, and the end -- which is a compression bomb in a picture's
 // clothes and walks straight past any limit on the number of bytes uploaded, because the file really
 // is this small. What stops it is `imageShape`, which reads these bytes and decodes none of them.
-export val Bomb = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 46, 224, 0, 0,
-                   46, 224, 8, 2, 0, 0, 0, 222, 39, 27, 166, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96,
-                   130]
+export val Bomb = bytes([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 46, 224,
+                         0, 0, 46, 224, 8, 2, 0, 0, 0, 222, 39, 27, 166, 0, 0, 0, 0, 73, 69, 78, 68,
+                         174, 66, 96, 130])
 
 export bomb(name: string) -> object =
     { field: "photo", filename: name, type: "image/png", bytes: Bomb }
@@ -228,7 +236,7 @@ export bomb(name: string) -> object =
 // **`slate:image` BUILDS IT, SO ASKING FOR ONE IS ITSELF A DECODE** -- which is why every test that
 // wants one is a test that skips where the library is not. Importing a name a back end does not have
 // is fine; reaching it is what refuses.
-export wide(width: integer, height: integer) -> array
+export wide(width: integer, height: integer) -> bytes
     val seed = { width: 4, height: 2, channels: 3,
                  pixels: [220, 40, 40, 40, 220, 40, 40, 40, 220, 240, 240, 40,
                           40, 220, 220, 220, 40, 220, 20, 20, 20, 250, 250, 250] }
