@@ -203,7 +203,7 @@ shown(bytes: array, kind: object, square: boolean) -> object
 fitted(img: object, width: integer) -> object
     if img.width <= width then return img
 
-    resizeImage(img, width, max(1, img.height * width / img.width))
+    resizeImage(img, width, max(1, img.height * width \ img.width))
 
 // The centred square of a picture, at exactly `side` across.
 //
@@ -219,7 +219,7 @@ fitted(img: object, width: integer) -> object
 // was uploaded, and the scale that follows walks a picture already smaller than that.
 squared(img: object, side: integer) -> object
     val short = min(img.width, img.height)
-    val box = cut(img, (img.width - short) / 2, (img.height - short) / 2, short)
+    val box = cut(img, (img.width - short) \ 2, (img.height - short) \ 2, short)
 
     if short == side then box else resizeImage(box, side, side)
 
