@@ -144,6 +144,7 @@ async draining(it: object)
 // is asked to leave -- so a connection made in the middle of it is answered rather than refused.
 async rolling(it: object)
     val was = biggest(firsts(await lines(it.where, "ready")))
+    val replaced = await children(it.child.pid)
 
     it.child.kill("SIGHUP")
 
@@ -159,6 +160,12 @@ async rolling(it: object)
     assert(answered > 0, "nothing was asked during the roll")
 
     assert(await grew(it.where, "ready", 4), "the workers were never replaced")
+
+    // **The last `ready` line is not the end of the roll.** A replacement writes it once it is
+    // serving, and only then does the supervisor take the worker it replaces out of the rotation and
+    // ask it to leave -- so a request made in between is still answered by the old one, correctly.
+    // The roll is over when every worker it replaced has gone.
+    assert(await allGone(replaced), "a worker the roll replaced is still running")
 
     for i in [1, 2, 3]
         assertEq((await asked(it.port, "/")).status, 200)
@@ -334,6 +341,24 @@ async alive(pid: string) -> boolean
 
     got.ok && got.value.status == 0
 
+// Wait until none of `pids` is running, or say that one still is -- on `grew`'s budget, for its reason.
+async allGone(pids: array) -> boolean
+    var waited = 0
+
+    while waited < 15000
+        var any = false
+
+        for pid in pids
+            if await alive(pid) then any = true
+
+        if !any then return true
+
+        await sleep(50)
+
+        waited = waited + 50
+
+    false
+
 // -- one request over a real socket -----------------------------------------------------------------
 
 // **`Connection: close` is what makes a client five lines**: the answer ends when the socket does, so
@@ -387,7 +412,7 @@ statusOf(text: string) -> integer
 bodyOf(text: string) -> string
     val at = indexOf(text, "\r\n\r\n")
 
-    if at < 0 then "" else text[(at + 4)..]
+    if at == null then "" else text[(at + 4)..]
 
 // -- a watchdog, and a directory to leave behind nothing -------------------------------------------
 
