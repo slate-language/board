@@ -11,7 +11,9 @@
         // its `multipart` reads `req.bytes`, where 0.3.0's read the body as text and a `.png` was
         // the same value as no body at all. 0.4.1 moved the media type in a refused upload's `415`
         // out of the problem document's own `type` member and into `mediaType`.
-        sluice: { git: "github.com/slate-language/sluice", version: "0.6.0" },
+        // **0.6.1 is what slate 0.1.6's checker accepts**: the event ring's replay compared an id
+        // that might not number, and the checker refuses `>` on an `integer | null`.
+        sluice: { git: "github.com/slate-language/sluice", version: "0.6.1" },
         // The UI framework, rendered twice -- to markup on the server and into the page in a
         // browser. `lath/router` is imported by both halves and `lath/dom` only by the browser one.
         // **0.5.1 is what makes this board hydratable**: adjacent text children keep their seam, an
@@ -35,12 +37,16 @@
         // from `req.cookies.theme` and written back by `Theme` itself through `dom`'s
         // `setCookie` (0.0.34) whenever a reader toggles it -- no `?theme` query and no `/theme`
         // route needed for the ordinary case.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.9.1" },
+        // **0.9.2 is what slate 0.1.6's checker accepts**: the tab arrow keys did arithmetic on an
+        // `indexOf` result.
+        mortar: { git: "github.com/slate-language/mortar", version: "0.9.2" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.7.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
         // package takes one, so there is nothing between them.
-        logger: { git: "github.com/slate-language/logger", version: "0.2.0" },
+        // 0.2.1 looks a level up through one `rank` that throws on a word not in the table, which is
+        // what slate 0.1.6's checker accepts.
+        logger: { git: "github.com/slate-language/logger", version: "0.2.1" },
         dom: { git: "github.com/slate-language/dom", version: "0.1.1" },
     },
 }
