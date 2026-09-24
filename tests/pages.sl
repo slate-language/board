@@ -143,7 +143,11 @@ A_REPLY_LIST_IS_KEYED_AND_IN_THE_ORDER_IT_WAS_GIVEN()
     // so an `indexOf` over the whole answer is an `indexOf` over `mortar`'s comments as well.
     val list = markup[indexOf(markup, "<ul class=\"m-posts\">")..]
 
-    assert(indexOf(list, "the earlier one") < indexOf(list, "the later one"))
+    val earlier = indexOf(list, "the earlier one")
+    val later = indexOf(list, "the later one")
+
+    assert(earlier != null && later != null)
+    assert(earlier < later)
 
 @test
 A_VISITOR_IS_ASKED_TO_SIGN_IN_AND_A_MEMBER_IS_GIVEN_THE_FORM()
