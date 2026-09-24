@@ -13,7 +13,8 @@
         // out of the problem document's own `type` member and into `mediaType`.
         // **0.6.1 is what slate 0.1.6's checker accepts**: the event ring's replay compared an id
         // that might not number, and the checker refuses `>` on an `integer | null`.
-        sluice: { git: "github.com/slate-language/sluice", version: "0.6.1" },
+        // 0.6.2 pins logger 0.2.1 itself, so a consumer no longer has to.
+        sluice: { git: "github.com/slate-language/sluice", version: "0.6.2" },
         // The UI framework, rendered twice -- to markup on the server and into the page in a
         // browser. `lath/router` is imported by both halves and `lath/dom` only by the browser one.
         // **0.5.1 is what makes this board hydratable**: adjacent text children keep their seam, an
@@ -31,7 +32,8 @@
         // let through and 0.0.41 checks -- so on the deployed board every address that was not the
         // first route in the table faulted, answered `500`, and put the fault back on the loop, which
         // is a worker gone. 0.10.1 says `-> object | null`, which is what the function always did.
-        lath: { git: "github.com/slate-language/lath", version: "0.10.3" },
+        // 0.10.4's own tests pass slate 0.1.6's null check.
+        lath: { git: "github.com/slate-language/lath", version: "0.10.4" },
         // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.3.2 MOVED THE
         // THEME FROM THE ADDRESS TO A COOKIE**: it lives in a lath atom now, seeded once per request
         // from `req.cookies.theme` and written back by `Theme` itself through `dom`'s
@@ -39,7 +41,7 @@
         // route needed for the ordinary case.
         // **0.9.2 is what slate 0.1.6's checker accepts**: the tab arrow keys did arithmetic on an
         // `indexOf` result.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.9.2" },
+        mortar: { git: "github.com/slate-language/mortar", version: "0.9.3" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.7.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
