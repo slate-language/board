@@ -19,7 +19,7 @@ import { Board, Nav, PostContext, Session } from "./context.sl"
 import { Card, Original, pictureOf, tagged } from "./parts.slx"
 import { AvatarForm, Doing, ReplyForm, SearchForm, SignForm, ThreadForm } from "./forms.slx"
 
-import shell from "./shell.css"
+import "./shell.css"
 import listing from "./list.css"
 import conversation from "./thread.css"
 import people from "./profile.css"
@@ -421,19 +421,13 @@ Find(props: object) =
 
     out
 
-// The header, the content and the footer, with the board's own sheet on them.
+// The header, the content and the footer.
 //
-// **A component and not four lines inside `App`, because `style(css)` may only be called while
-// something is rendering** -- and `App` is *called* by the server rather than rendered, `mount` being
-// handed the element it answers. So the board's shell sheet is registered here, one level in, where
-// there is a render to register it against.
-//
-// **It also puts the sheet after `mortar`'s**, which is what a rule of this board's meant to override
-// a rule of the library's needs: two selectors of the same weight are decided by which sheet came
-// last, and `Theme` renders before this does.
+// **The board's shell sheet is a bare import** (`import "./shell.css"`), so it needs no render to
+// register it: `lath` writes it ahead of every component sheet, and `api/routes.sl` serves it as one
+// cached file. A rule of this board's that has to beat one of `mortar`'s is therefore written
+// `.mortar.board …`, which outweighs the library's selector whatever order the sheets stand in.
 Frame(props: object) =
-    style(shell)
-
     val out = <Page brand="the board" search={<Find/>} nav={<Me/>}
                     footer={<p>sluice, lath, mortar and pg -- the slate stack, end to end.</p>}>
         {props.children ?? []}

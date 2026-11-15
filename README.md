@@ -82,11 +82,23 @@ Open **http://127.0.0.1:8080**, follow *Join*, and make an account — the first
 thread with a photograph on it, which is what the rest of this tour is about. The board prints its
 address and its whole route table on the way up.
 
+**While changing the board, run it with `slate dev` instead**, which rebuilds the browser program,
+restarts the server and reloads the open page on every save — a saved `.css` file is swapped in
+without a reload:
+
+```
+BOARD_SECRET=a-long-random-string slate dev server.sl --js client.slx=public/app.js --port 8080
+```
+
+`slate dev` hands the server its port as `PORT`, so `server.sl` runs under it exactly as it runs
+deployed.
+
 `scripts/migrate.sl` applies `schema.sql`, whose every statement is `if not exists`, so running it
 twice does what running it once did. `scripts/build.sl` writes `public/app.js`, which is
 `slate js client.slx` — one self-contained file, no bundler and nothing to install beside it. It is
-the only thing under `public/` and the only thing the board serves off the disk; the stylesheets
-travel inside the program. The board runs without it and loses only its live replies and its
+the only thing under `public/` and the only thing the board serves off the disk; the board's own
+stylesheet, `app/shell.css`, is a bare import that `api/routes.sl` serves as one cached file at
+`/assets/app.<hash>.css`, and the components' sheets travel inside the program. The board runs without it and loses only its live replies and its
 reload-free posts.
 
 **`public/app.js` is not tracked in git.** A `git pull` never touches it, so a server left running

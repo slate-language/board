@@ -9,9 +9,10 @@
 // know which -- `api/render.sl` decides on the request. So the same route serves a browser with no
 // JavaScript, a browser running the page's own program, and `curl`.
 
-import { api, body, csrf, hub, json, lastEventId, logger, problem, rateLimit, requestId, session,
+import { api, asset, body, csrf, hub, json, lastEventId, logger, problem, rateLimit, requestId, session,
     sse, stack, timeout } from sluice
 import { files } from slate:http
+import { serveAppSheet } from lath
 
 import { answered, backTo, moved, wantsJson, whoIs } from "./render.sl"
 import { formCsrf, given, titleFor } from "./forms.sl"
@@ -180,6 +181,12 @@ export application(store: object, sessions: object, options: object = {}) -> obj
 
     // -- what is on the disk ---------------------------------------------------------------------------
 
+    // **The board's own stylesheet, once and cached.** `serveAppSheet()` turns on the `<link>` every page
+    // carries in place of the inlined `<style>`, and this route is the file it names. It stands ahead of
+    // the catch-all below, which would otherwise answer the address with a `404`.
+    val sheet = serveAppSheet()
+
+    app.get(sheet.path, asset(sheet.css, sheet.type))
     app.get("/assets/*rest", files("./public", { cacheControl: "max-age=300" }))
 
     // **A photo is answered by this program and not by `files(root)`**, because a photo's name is the
