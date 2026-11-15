@@ -33,7 +33,7 @@
         // first route in the table faulted, answered `500`, and put the fault back on the loop, which
         // is a worker gone. 0.10.1 says `-> object | null`, which is what the function always did.
         // 0.10.4's own tests pass slate 0.1.6's null check.
-        lath: { git: "github.com/slate-language/lath", version: "0.11.0" },
+        lath: { git: "github.com/slate-language/lath", version: "0.11.1" },
         // The stylesheets, as slate values rather than as a blob of quoted CSS. **0.3.2 MOVED THE
         // THEME FROM THE ADDRESS TO A COOKIE**: it lives in a lath atom now, seeded once per request
         // from `req.cookies.theme` and written back by `Theme` itself through `dom`'s
@@ -41,7 +41,7 @@
         // route needed for the ordinary case.
         // **0.9.2 is what slate 0.1.6's checker accepts**: the tab arrow keys did arithmetic on an
         // `indexOf` result.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.10.1" },
+        mortar: { git: "github.com/slate-language/mortar", version: "0.10.2" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.8.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
