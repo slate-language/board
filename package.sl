@@ -41,7 +41,7 @@
         // route needed for the ordinary case.
         // **0.9.2 is what slate 0.1.6's checker accepts**: the tab arrow keys did arithmetic on an
         // `indexOf` result.
-        mortar: { git: "github.com/slate-language/mortar", version: "0.9.3" },
+        mortar: { git: "github.com/slate-language/mortar", version: "0.10.1" },
         // PostgreSQL, spoken on the same loop that answers HTTP.
         pg: { git: "github.com/slate-language/pg", version: "0.8.0" },
         // Where a request's log line goes. `sluice`'s `logger` guard hands a sink a record and this
